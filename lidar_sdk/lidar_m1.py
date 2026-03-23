@@ -130,10 +130,9 @@ class LidarM1:
                         return start_angle, end_angle, nodes
                     
             except struct.error:
-                continue
-            
-        print(f"❌ Не удалось распознать пакет размером {len(data)}")
-        print("Первые 10 байт:", ' '.join(f'{b:02X}' for b in data[:10]))
+               print(f"❌ Не удалось распознать пакет размером {len(data)}")
+
+        #print("Первые 10 байт:", ' '.join(f'{b:02X}' for b in data[:10]))
         return None
 
 
