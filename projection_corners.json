@@ -1,0 +1,41 @@
+{
+  "timestamp": 1774225181.0838375,
+  "corners": [
+    {
+      "name": "верхний правый",
+      "angle": 198.8113463892289,
+      "distance": 532.7894736842105,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    },
+    {
+      "name": "нижний правый",
+      "angle": 264.4348938321537,
+      "distance": 268.5652173913044,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    },
+    {
+      "name": "нижний левый",
+      "angle": 89.8556634746922,
+      "distance": 259.52941176470586,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    },
+    {
+      "name": "верхний левый",
+      "angle": 147.39255813953488,
+      "distance": 529.0,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    }
+  ]
+}

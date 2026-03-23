@@ -1,0 +1,32 @@
+{
+  "85.0": {
+    "avg_distance": 369.57142857142856,
+    "frequency": 1.4,
+    "count": 7
+  },
+  "250.0": {
+    "avg_distance": 1721.076923076923,
+    "frequency": 2.6,
+    "count": 13
+  },
+  "265.0": {
+    "avg_distance": 388.64285714285717,
+    "frequency": 2.8,
+    "count": 14
+  },
+  "80.0": {
+    "avg_distance": 351.05263157894734,
+    "frequency": 3.8,
+    "count": 19
+  },
+  "150.0": {
+    "avg_distance": 2189.7,
+    "frequency": 2.0,
+    "count": 10
+  },
+  "270.0": {
+    "avg_distance": 570.25,
+    "frequency": 0.8,
+    "count": 4
+  }
+}
