@@ -6,6 +6,7 @@ import pyautogui
 import numpy as np
 from typing import List, Optional, Tuple
 from lidar_sdk import Point
+import time
 
 class MouseController:
     """Контроллер для управления курсором мыши на основе касаний LiDAR"""
@@ -18,6 +19,10 @@ class MouseController:
             screen_width: ширина экрана (по умолчанию определяется автоматически)
             screen_height: высота экрана (по умолчанию определяется автоматически)
         """
+        # Отключаем защитные механизмы для скорости
+        pyautogui.FAILSAFE = False
+        pyautogui.PAUSE = 0
+        
         # Получаем размеры экрана если не заданы
         if screen_width is None or screen_height is None:
             screen_size = pyautogui.size()
@@ -29,12 +34,20 @@ class MouseController:
             
         self.corners = None
         self.is_active = False
-        self.smoothing_factor = 0.3  # Фактор сглаживания движения (0.0 - 1.0)
+        self.smoothing_factor = 0.0  # Отключено для максимальной скорости
         self.last_mouse_position = None
         self.lidar_corners = None   # Углы LiDAR в декартовых координатах
         self.screen_corners = None  # Соответствующие углы экрана
         self.lidar_bbox = None      # Ограничивающий прямоугольник проекции
         
+        # Отслеживание касаний для кликов
+        self.touch_tracking = {}    # Отслеживание активных касаний
+        self.touch_id_counter = 0   # Уникальные ID для касаний
+        self.active_touches = {}    # Активные касания в текущем кадре
+        
+        # Направление севера для коррекции координат
+        self.north_angle = 0.0
+    
     def set_projection_corners(self, corners: List[dict]):
         """
         Установка углов проекции для калибровки
@@ -66,12 +79,12 @@ class MouseController:
         # Берем первые 4 угла в заданном порядке
         corner_points = self.corners[:4]
         
-        # Преобразуем углы LiDAR в декартовы координаты
-        # Исправленная функция для правильного преобразования координат LiDAR
+        # Преобразуем углы LiDAR в декартовы координаты с учетом направления севера
         def polar_to_cartesian(angle_deg, distance):
+            # Применяем коррекцию направления севера
+            corrected_angle = (angle_deg - self.north_angle) % 360
             # Предполагаем, что 0° - это направление "вперёд" (вверх)
-            # Поэтому используем sin для X и cos для Y с инверсией
-            angle_rad = np.radians(angle_deg)
+            angle_rad = np.radians(corrected_angle)
             x = distance * np.sin(angle_rad)      # Горизонтальное движение
             y = -distance * np.cos(angle_rad)     # Вертикальное движение (инвертировано)
             return x, y
@@ -107,7 +120,7 @@ class MouseController:
 
     def map_touch_to_screen(self, touch_point: Point) -> Optional[Tuple[int, int]]:
         """
-        Преобразует точку касания LiDAR в координаты экрана
+        Преобразует точку касания LiDAR в координаты экрана с учетом направления севера
         
         Args:
             touch_point: точка касания (Point)
@@ -118,9 +131,11 @@ class MouseController:
         if not self.corners or not self.lidar_corners or not self.screen_corners or not self.lidar_bbox:
             return None
             
-        # Преобразуем точку касания в декартовы координаты
+        # Преобразуем точку касания в декартовы координаты с учетом севера
         def polar_to_cartesian(angle_deg, distance):
-            angle_rad = np.radians(angle_deg)
+            # Применяем коррекцию направления севера
+            corrected_angle = (angle_deg - self.north_angle) % 360
+            angle_rad = np.radians(corrected_angle)
             x = distance * np.sin(angle_rad)      # Горизонтальное движение
             y = -distance * np.cos(angle_rad)     # Вертикальное движение (инвертировано)
             return x, y
@@ -159,7 +174,7 @@ class MouseController:
     
     def move_mouse_to_touch(self, touch_point: Point) -> bool:
         """
-        Перемещает курсор мыши в позицию касания
+        Быстрое перемещение курсора мыши в позицию касания
         
         Args:
             touch_point: точка касания (Point)
@@ -177,13 +192,7 @@ class MouseController:
             
         x, y = screen_coords
         
-        # Применяем сглаживание если есть предыдущая позиция
-        if self.last_mouse_position and self.smoothing_factor < 1.0:
-            last_x, last_y = self.last_mouse_position
-            x = int(last_x * (1 - self.smoothing_factor) + x * self.smoothing_factor)
-            y = int(last_y * (1 - self.smoothing_factor) + y * self.smoothing_factor)
-        
-        # Перемещаем курсор мыши
+        # Отключено сглаживание для максимальной скорости
         try:
             pyautogui.moveTo(x, y)
             self.last_mouse_position = (x, y)
@@ -194,7 +203,7 @@ class MouseController:
     
     def click_at_touch(self, touch_point: Point) -> bool:
         """
-        Выполняет клик мышью в позиции касания
+        Выполняет быстрый клик мышью в позиции касания
         
         Args:
             touch_point: точка касания (Point)
@@ -208,7 +217,7 @@ class MouseController:
         # Сначала перемещаем курсор
         if self.move_mouse_to_touch(touch_point):
             try:
-                # Выполняем клик
+                # Очень быстрый клик без пауз
                 pyautogui.click()
                 return True
             except Exception as e:
@@ -216,16 +225,153 @@ class MouseController:
                 return False
         return False
     
+    def _get_touch_key(self, touch_point: Point) -> tuple:
+        """Создает уникальный ключ для касания на основе координат"""
+        # Грубая группировка для скорости
+        angle_key = round(touch_point.angle, 0)
+        distance_key = round(touch_point.distance, -1)
+        return (angle_key, distance_key)
+    
+    def start_touch_tracking(self, touch_point: Point) -> int:
+        """
+        Начинает отслеживание касания и возвращает его ID
+        
+        Args:
+            touch_point: точка касания
+            
+        Returns:
+            int: ID касания или None если не активен
+        """
+        if not self.is_active:
+            return None
+            
+        touch_key = self._get_touch_key(touch_point)
+        
+        # Если это новое касание (не продолжение существующего)
+        if touch_key not in self.active_touches:
+            self.touch_id_counter += 1
+            touch_id = self.touch_id_counter
+            
+            self.active_touches[touch_key] = {
+                'id': touch_id,
+                'point': touch_point,
+                'start_time': time.time(),
+                'screen_pos': self.map_touch_to_screen(touch_point)
+            }
+            
+            return touch_id
+        else:
+            # Продолжение существующего касания
+            self.active_touches[touch_key]['point'] = touch_point
+            self.active_touches[touch_key]['last_update'] = time.time()
+            return self.active_touches[touch_key]['id']
+        
+        
+    def end_touch_tracking(self, touch_point: Point) -> bool:
+        """
+        Завершает отслеживание касания и выполняет клик
+        
+        Args:
+            touch_point: точка касания
+            
+        Returns:
+            bool: True если клик выполнен успешно
+        """
+        if not self.is_active:
+            return False
+            
+        touch_key = self._get_touch_key(touch_point)
+        
+        if touch_key in self.active_touches:
+            touch_info = self.active_touches[touch_key]
+            
+            # Перемещаем курсор в позицию начала касания
+            success = self.move_mouse_to_touch(touch_info['point'])
+            
+            if success:
+                try:
+                    # Выполняем клик с минимальной задержкой
+                    pyautogui.click()
+                    print(f"🖱️  Mouse click executed at touch release")
+                except Exception as e:
+                    print(f"❌ Ошибка клика мышью: {e}")
+                    return False
+            
+            # Удаляем отслеживание
+            del self.active_touches[touch_key]
+            
+            return success
+        
+        return False
+    
+    def update_touch_frame(self, touch_points: List[Point]) -> Tuple[List[Point], List[Point]]:
+        """
+        Обновляет отслеживание касаний для текущего кадра
+        
+        Args:
+            touch_points: список точек касания в текущем кадре
+            
+        Returns:
+            Tuple[List[Point], List[Point]]: (новые касания, завершенные касания)
+        """
+        if not self.is_active:
+            return [], []
+        
+        current_touch_keys = set()
+        new_touches = []
+        ended_touches = []
+        
+        # Ограничиваем количество обрабатываемых точек для скорости
+        limited_touch_points = touch_points[:10]
+        
+        # Обновляем существующие касания и начинаем новые
+        for touch_point in limited_touch_points:
+            touch_key = self._get_touch_key(touch_point)
+            current_touch_keys.add(touch_key)
+            
+            # Если это новое касание
+            if touch_key not in self.active_touches:
+                touch_id = self.start_touch_tracking(touch_point)
+                if touch_id:
+                    new_touches.append(touch_point)
+        
+        # Проверяем, какие касания закончились
+        previous_touch_keys = set(self.active_touches.keys())
+        finished_touches = previous_touch_keys - current_touch_keys
+        
+        for touch_key in finished_touches:
+            touch_info = self.active_touches[touch_key]
+            ended_touches.append(touch_info['point'])
+            # Выполняем клик при отпускании
+            self.end_touch_tracking(touch_info['point'])
+        
+        return new_touches, ended_touches
+    
+    def get_active_touches(self) -> dict:
+        """Возвращает информацию об активных касаниях"""
+        return self.active_touches.copy()
+    
+    def clear_all_touches(self):
+        """Очищает все активные касания"""
+        self.active_touches.clear()
+    
     def enable_control(self):
         """Включает управление мышью"""
         self.is_active = True
         self.last_mouse_position = None
+        self.clear_all_touches()  # Очищаем старые касания при включении
         print("✅ Управление мышью включено")
         
     def disable_control(self):
         """Выключает управление мышью"""
+        # Выполняем клики для всех активных касаний перед отключением
+        for touch_key in list(self.active_touches.keys()):
+            touch_info = self.active_touches[touch_key]
+            self.end_touch_tracking(touch_info['point'])
+            
         self.is_active = False
         self.last_mouse_position = None
+        self.clear_all_touches()
         print("🛑 Управление мышью выключено")
         
     def set_smoothing(self, factor: float):
@@ -243,7 +389,7 @@ mouse_controller = MouseController()
 
 def initialize_mouse_control(screen_width: int = None, screen_height: int = None):
     """
-    Инициализация управления мышью
+    Инициализация управления мыши
     
     Args:
         screen_width: ширина экрана (опционально)
@@ -260,3 +406,4 @@ def get_mouse_controller() -> MouseController:
     """Возвращает глобальный экземпляр контроллера мыши"""
     global mouse_controller
     return mouse_controller
+

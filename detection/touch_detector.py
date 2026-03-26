@@ -20,14 +20,14 @@ class TouchDetector:
     """
     
     def __init__(self, background_source, config: Optional[ThresholdConfig] = None,
-                 max_working_distance_ratio: float = 0.9):
+                 max_working_distance_ratio: float = 0.95):
         """
         Инициализация детектора касаний
         
         Args:
             background_source: Путь к файлу фоновой карты или словарь {угол: расстояние}
             config: Конфигурация порогов
-            max_working_distance_ratio: Максимальное отношение рабочего расстояния (0.9 = 90%)
+            max_working_distance_ratio: Максимальное отношение рабочего расстояния (0.95 = 95%)
         """
         self.config = config or ThresholdConfig.default()
         self.max_working_distance_ratio = max_working_distance_ratio
@@ -46,6 +46,10 @@ class TouchDetector:
         # Сглаживаем загруженную фоновую карту
         self.background_map = self._smooth_loaded_background(self.background_map)
         self.background_interp = self._create_interpolation_func(self.background_map)
+        
+        # Отслеживание стабильности касаний
+        self.touch_history = {}  # История касаний для отслеживания стабильности
+        self.stability_frames = 2  # Количество кадров для подтверждения касания
     
     def _smooth_loaded_background(self, background_map: dict, window_size: float = 3.0) -> dict:
         """Сглаживает загруженную фоновую карту"""
@@ -185,6 +189,68 @@ class TouchDetector:
                 
         return valid_groups
     
+    def get_stable_touch_points(self, current_scan: List[Point], min_stability_frames: int = None) -> List[Point]:
+        """
+        Получает стабильные точки касания, которые присутствуют несколько кадров подряд
+        
+        Args:
+            current_scan: Текущий скан
+            min_stability_frames: Минимальное количество кадров для подтверждения стабильности
+            
+        Returns:
+            Список стабильных точек касания
+        """
+        if min_stability_frames is None:
+            min_stability_frames = self.stability_frames
+            
+        # Получаем текущие точки касания
+        current_touch_points = self.detect_touch_points(current_scan)
+        
+        # Создаем ключи для текущих касаний
+        current_keys = set()
+        for point in current_touch_points:
+            key = self._get_point_key(point)
+            current_keys.add(key)
+            
+            # Обновляем историю
+            if key in self.touch_history:
+                self.touch_history[key]['count'] += 1
+                self.touch_history[key]['last_point'] = point
+            else:
+                self.touch_history[key] = {
+                    'count': 1,
+                    'first_point': point,
+                    'last_point': point
+                }
+        
+        # Удаляем неактивные касания из истории
+        inactive_keys = set(self.touch_history.keys()) - current_keys
+        for key in inactive_keys:
+            del self.touch_history[key]
+        
+        # Возвращаем стабильные касания
+        stable_points = []
+        for key, history in self.touch_history.items():
+            if history['count'] >= min_stability_frames:
+                stable_points.append(history['last_point'])
+        
+        return stable_points
+    
+    def _get_point_key(self, point: Point, precision: float = 1.0) -> tuple:
+        """
+        Создает уникальный ключ для точки касания
+        
+        Args:
+            point: Точка касания
+            precision: Точность группировки (в градусах и мм)
+            
+        Returns:
+            tuple: Ключ для идентификации точки
+        """
+        angle_key = round(point.angle / precision) * precision
+        distance_key = round(point.distance / (precision * 10)) * (precision * 10)
+        return (round(angle_key, 1), round(distance_key, 0))
+    
     def get_touch_statistics(self, current_scan: List[Point]) -> Dict:
         """Получает статистику по касаниям"""
         touch_points = self.detect_touch_points(current_scan)
@@ -230,3 +296,30 @@ class TouchDetector:
     def update_working_distance_ratio(self, new_ratio: float):
         """Обновляет коэффициент рабочего расстояния"""
         self.max_working_distance_ratio = max(0.1, min(1.0, new_ratio))
+    
+    def reset_touch_history(self):
+        """Сбрасывает историю касаний"""
+        self.touch_history.clear()
+
+    def detect_touch_points_fast(self, current_scan: List[Point]) -> List[Point]:
+        """
+        Быстрая версия обнаружения точек касания
+        """
+        if not current_scan:
+            return []
+        
+        touch_points = []
+        min_deviation = self.config.min_distance_deviation
+    
+        for point in current_scan[:50]:  # Ограничиваем количество точек
+            if point.intensity < self.config.min_confidence:
+                continue
+            
+            expected_distance = self.background_interp(point.angle)
+        
+            # Быстрая проверка без адаптивного порога
+            deviation = expected_distance - point.distance
+            if deviation >= min_deviation and expected_distance <= 3000:
+                touch_points.append(point)
+            
+        return touch_points[:5]  # Возвращаем только первые 5 точек

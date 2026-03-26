@@ -28,6 +28,15 @@ DISPLAY_CONFIG = {
     'plot_title': "Фоновая карта (полярное представление)",
 }
 
+# Параметры производительности
+PERFORMANCE_CONFIG = {
+    'target_fps': 60,
+    'max_touch_points': 5,
+    'scan_point_limit': 50,
+    'update_interval': 0.016,  # 1/60 секунды
+    'fast_mode': True,
+}
+
 class Config:
     """Центральный класс конфигурации"""
     
@@ -53,6 +62,10 @@ class Config:
             'angle_tolerance': self.processing['angle_tolerance'],
             'use_median': self.processing['use_median_filter']
         }
+
+    def get_performance_params(self):
+        """Получение параметров производительности"""
+        return PERFORMANCE_CONFIG.copy()
 
 # Глобальная конфигурация
 config = Config()
