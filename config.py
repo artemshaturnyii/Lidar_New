@@ -37,6 +37,21 @@ PERFORMANCE_CONFIG = {
     'fast_mode': True,
 }
 
+# Параметры точности для детекции касаний
+PRECISION_CONFIG = {
+    'sync_tolerance': 3.0,          # Точность синхронизации скана (градусы)
+    'smoothing_window': 5,          # Размер окна сглаживания
+    'min_touch_intensity': 30,      # Минимальная интенсивность касания
+    'max_detection_distance': 2500, # Максимальное расстояние касания (мм)
+    'mouse_update_rate': 0.016,     # Частота обновления мыши (секунды)
+    'touch_stability_frames': 3,    # Количество кадров для стабильности касания
+    'angle_window': 5.0,            # Угловое окно для группировки точек
+    'min_touch_points': 2,          # Минимальное количество точек для подтверждения касания
+    'adaptive_threshold_multiplier': 0.05,  # Множитель для адаптивного порога
+    'min_distance_deviation': 50.0, # Минимальное отклонение расстояния (мм)
+    'max_background_distance': 3000.0,  # Максимальное расстояние фона (мм)
+}
+
 class Config:
     """Центральный класс конфигурации"""
     
@@ -45,6 +60,7 @@ class Config:
         self.calibration = CALIBRATION_CONFIG.copy()
         self.processing = PROCESSING_CONFIG.copy()
         self.display = DISPLAY_CONFIG.copy()
+        self.precision = PRECISION_CONFIG.copy()
     
     def update_lidar_config(self, host=None, port=None, timeout=None):
         """Обновление параметров подключения"""
@@ -66,7 +82,16 @@ class Config:
     def get_performance_params(self):
         """Получение параметров производительности"""
         return PERFORMANCE_CONFIG.copy()
+    
+    def get_precision_params(self):
+        """Получение параметров точности"""
+        return self.precision.copy()
+    
+    def update_precision_config(self, **kwargs):
+        """Обновление параметров точности"""
+        for key, value in kwargs.items():
+            if key in self.precision:
+                self.precision[key] = value
 
 # Глобальная конфигурация
 config = Config()
-

@@ -83,10 +83,9 @@ class MouseController:
         def polar_to_cartesian(angle_deg, distance):
             # Применяем коррекцию направления севера
             corrected_angle = (angle_deg - self.north_angle) % 360
-            # Предполагаем, что 0° - это направление "вперёд" (вверх)
             angle_rad = np.radians(corrected_angle)
             x = distance * np.sin(angle_rad)      # Горизонтальное движение
-            y = -distance * np.cos(angle_rad)     # Вертикальное движение (инвертировано)
+            y = distance * np.cos(angle_rad)     # Вертикальное движение
             return x, y
         
         # Преобразуем углы проекции в декартовы координаты
@@ -120,57 +119,52 @@ class MouseController:
 
     def map_touch_to_screen(self, touch_point: Point) -> Optional[Tuple[int, int]]:
         """
-        Преобразует точку касания LiDAR в координаты экрана с учетом направления севера
-        
+        Преобразует точку касания LiDAR в координаты экрана методом линейного преобразования
+    
         Args:
             touch_point: точка касания (Point)
-            
+        
         Returns:
             Tuple[int, int]: (x, y) координаты экрана или None
         """
         if not self.corners or not self.lidar_corners or not self.screen_corners or not self.lidar_bbox:
             return None
-            
-        # Преобразуем точку касания в декартовы координаты с учетом севера
-        def polar_to_cartesian(angle_deg, distance):
-            # Применяем коррекцию направления севера
-            corrected_angle = (angle_deg - self.north_angle) % 360
-            angle_rad = np.radians(corrected_angle)
-            x = distance * np.sin(angle_rad)      # Горизонтальное движение
-            y = -distance * np.cos(angle_rad)     # Вертикальное движение (инвертировано)
-            return x, y
-        
-        touch_x, touch_y = polar_to_cartesian(touch_point.angle, touch_point.distance)
-        
-        # Проверяем, находится ли точка в пределах проекции
-        tolerance = 50
-        if not (self.lidar_bbox['min_x'] - tolerance <= touch_x <= self.lidar_bbox['max_x'] + tolerance and 
-                self.lidar_bbox['min_y'] - tolerance <= touch_y <= self.lidar_bbox['max_y'] + tolerance):
+    
+        # Преобразуем точку в декартовы координаты
+        angle_rad = np.radians(touch_point.angle)
+        x = touch_point.distance * np.sin(angle_rad)
+        y = touch_point.distance * np.cos(angle_rad)
+    
+        # Проверяем границы
+        tolerance = 10
+        if not (self.lidar_bbox['min_x'] - tolerance <= x <= self.lidar_bbox['max_x'] + tolerance and 
+                self.lidar_bbox['min_y'] - tolerance <= y <= self.lidar_bbox['max_y'] + tolerance):
             return None
-        
-        # Нормализуем координаты точки касания в диапазон 0-1 внутри проекции
+    
+        # Линейное преобразование из координат LiDAR в координаты экрана
+        # Используем ограничивающий прямоугольник для масштабирования
         lidar_width = self.lidar_bbox['max_x'] - self.lidar_bbox['min_x']
         lidar_height = self.lidar_bbox['max_y'] - self.lidar_bbox['min_y']
-        
-        if lidar_width != 0:
-            norm_x = (touch_x - self.lidar_bbox['min_x']) / lidar_width
-        else:
-            norm_x = 0.5
-            
-        if lidar_height != 0:
-            norm_y = (touch_y - self.lidar_bbox['min_y']) / lidar_height
-        else:
-            norm_y = 0.5
-        
-        # Преобразуем нормализованные координаты в координаты экрана
+    
+        if lidar_width == 0 or lidar_height == 0:
+            return None
+    
+        # Нормализуем координаты (0-1)
+        norm_x = (x - self.lidar_bbox['min_x']) / lidar_width
+        norm_y = (y - self.lidar_bbox['min_y']) / lidar_height
+    
+        # Преобразуем в координаты экрана
+        # Экран: (0,0) в левом верхнем углу, X направо, Y вниз
         screen_x = norm_x * (self.screen_width - 1)
-        screen_y = norm_y * (self.screen_height - 1)
-        
-        # Ограничиваем координаты границами экрана
+        screen_y = (1.0 - norm_y) * (self.screen_height - 1)  # Инвертируем Y
+    
+        # Ограничиваем границами экрана
         screen_x = max(0, min(self.screen_width - 1, screen_x))
         screen_y = max(0, min(self.screen_height - 1, screen_y))
-        
+    
         return (int(screen_x), int(screen_y))
+
+
     
     def move_mouse_to_touch(self, touch_point: Point) -> bool:
         """
@@ -384,26 +378,26 @@ class MouseController:
         self.smoothing_factor = max(0.0, min(1.0, factor))
         print(f"🎚️  Фактор сглаживания установлен: {self.smoothing_factor}")
 
-# Глобальный экземпляр контроллера
-mouse_controller = MouseController()
+        # Глобальный экземпляр контроллера
+        mouse_controller = MouseController()
 
-def initialize_mouse_control(screen_width: int = None, screen_height: int = None):
-    """
-    Инициализация управления мыши
+    def initialize_mouse_control(screen_width: int = None, screen_height: int = None):
+        """
+        Инициализация управления мыши
     
-    Args:
-        screen_width: ширина экрана (опционально)
-        screen_height: высота экрана (опционально)
+        Args:
+            screen_width: ширина экрана (опционально)
+            screen_height: высота экрана (опционально)
         
-    Returns:
-        MouseController: экземпляр контроллера мыши
-    """
-    global mouse_controller
-    mouse_controller = MouseController(screen_width, screen_height)
-    return mouse_controller
+        Returns:
+            MouseController: экземпляр контроллера мыши
+        """
+        global mouse_controller
+        mouse_controller = MouseController(screen_width, screen_height)
+        return mouse_controller
 
-def get_mouse_controller() -> MouseController:
-    """Возвращает глобальный экземпляр контроллера мыши"""
-    global mouse_controller
-    return mouse_controller
+    def get_mouse_controller() -> MouseController:
+        """Возвращает глобальный экземпляр контроллера мыши"""
+        global mouse_controller
+        return mouse_controller
 
