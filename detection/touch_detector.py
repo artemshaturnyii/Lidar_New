@@ -20,14 +20,14 @@ class TouchDetector:
     """
     
     def __init__(self, background_source, config: Optional[ThresholdConfig] = None,
-                 max_working_distance_ratio: float = 0.95):
+                 max_working_distance_ratio: float = 0.99):
         """
         Инициализация детектора касаний
         
         Args:
             background_source: Путь к файлу фоновой карты или словарь {угол: расстояние}
             config: Конфигурация порогов
-            max_working_distance_ratio: Максимальное отношение рабочего расстояния (0.95 = 95%)
+            max_working_distance_ratio: Максимальное отношение рабочего расстояния (0.99 = 99%)
         """
         self.config = config or ThresholdConfig.default()
         self.max_working_distance_ratio = max_working_distance_ratio

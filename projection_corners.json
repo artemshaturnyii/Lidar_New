@@ -1,0 +1,41 @@
+{
+  "timestamp": 1775047858.1088011,
+  "corners": [
+    {
+      "name": "top_right",
+      "angle": 19.97722154222766,
+      "distance": 1580.578947368421,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    },
+    {
+      "name": "bottom_right",
+      "angle": 29.930195838433292,
+      "distance": 1133.7368421052631,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    },
+    {
+      "name": "bottom_left",
+      "angle": 343.15332558139534,
+      "distance": 992.3,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    },
+    {
+      "name": "top_left",
+      "angle": 346.96748290013676,
+      "distance": 1488.3529411764705,
+      "angle_std": 0.0,
+      "distance_std": 0.0,
+      "sample_count": 1,
+      "total_scans": 20
+    }
+  ]
+}

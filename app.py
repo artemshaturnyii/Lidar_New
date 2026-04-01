@@ -18,7 +18,7 @@ from noise_filter.noise_profiler import NoiseProfiler
 from noise_filter.noise_filter import NoiseFilter
 from persistent_noise_filter.persistent_noise_manager import PersistentNoiseManager
 from noise_filter.corner_calibration import CornerCalibrator
-from orientation import get_orientation_manager
+#from orientation import get_orientation_manager
 import queue
 import threading
 import traceback
@@ -36,7 +36,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-# Добавьте эту функцию где-нибудь после импортов
 def cleanup_files():
     """Удаляет временные файлы при завершении программы"""
     files_to_remove = ["background.npz", "projection_corners.json", "noise_profile.json",
@@ -50,9 +49,9 @@ def cleanup_files():
         except Exception as e:
             print(f"⚠️  Не удалось удалить {filename}: {e}")
 
-# Регистрируем функцию для вызова при выходе
-import atexit
-atexit.register(cleanup_files)
+    #Регистрируем функцию для вызова при выходе
+    import atexit
+    #atexit.register(cleanup_files)
 
 class LiDARApp:
     def __init__(self, root):
@@ -61,7 +60,7 @@ class LiDARApp:
         self.root.geometry("2000x1200")
         
         # Инициализация менеджера ориентации
-        self.orientation_manager = get_orientation_manager()
+        #self.orientation_manager = get_orientation_manager()
         self.plot_queue = queue.Queue()
         self.plot_thread = threading.Thread(target=self.plot_worker, daemon=True)
         self.plot_thread.start()
@@ -88,7 +87,7 @@ class LiDARApp:
         self.init_lidar_async()
         
         # Загружаем калибровку севера
-        self.load_north_calibration()
+        #self.load_north_calibration()
 
     def plot_worker(self):
         """Отдельный поток для обновления графиков"""
@@ -174,66 +173,66 @@ class LiDARApp:
         self.mouse_status.grid(row=4, column=1, sticky="w", padx=5, pady=2)
     
         # Orientation frame
-        orientation_frame = ttk.LabelFrame(control_frame, text="Orientation Control")
-        orientation_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
-        orientation_frame.grid_columnconfigure(0, weight=1)
-        orientation_frame.grid_columnconfigure(1, weight=1)
-        orientation_frame.grid_columnconfigure(2, weight=1)
+        #orientation_frame = ttk.LabelFrame(control_frame, text="Orientation Control")
+        #orientation_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        ##orientation_frame.grid_columnconfigure(0, weight=1)
+        #orientation_frame.grid_columnconfigure(1, weight=1)
+        #orientation_frame.grid_columnconfigure(2, weight=1)
     
-        ttk.Label(orientation_frame, text="Current Orientation:").grid(row=0, column=0, sticky="w", padx=5)
-        self.orientation_label = ttk.Label(orientation_frame, text="0.0°", foreground="blue")
-        self.orientation_label.grid(row=0, column=1, sticky="w", padx=5)
+        #ttk.Label(orientation_frame, text="Current Orientation:").grid(row=0, column=0, sticky="w", padx=5)
+        #self.orientation_label = ttk.Label(orientation_frame, text="0.0°", foreground="blue")
+        #self.orientation_label.grid(row=0, column=1, sticky="w", padx=5)
     
-        self.rotate_ccw_button = ttk.Button(orientation_frame, text="↺ -1°", 
-                                       command=self.rotate_counterclockwise)
-        self.rotate_ccw_button.grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-    
-        self.reset_orientation_button = ttk.Button(orientation_frame, text="Reset 0°", 
-                                              command=self.reset_orientation)
-        self.reset_orientation_button.grid(row=1, column=1, sticky="ew", padx=2, pady=2)
-    
-        self.rotate_cw_button = ttk.Button(orientation_frame, text="↻ +1°", 
-                                      command=self.rotate_clockwise)
-        self.rotate_cw_button.grid(row=1, column=2, sticky="ew", padx=2, pady=2)
+        #self.rotate_ccw_button = ttk.Button(orientation_frame, text="↺ -1°", 
+                                       #command=self.rotate_counterclockwise)
+        #self.rotate_ccw_button.grid(row=1, column=0, sticky="ew", padx=2, pady=2)
+    #
+        #self.reset_orientation_button = ttk.Button(orientation_frame, text="Reset 0°", 
+        #                                      command=self.reset_orientation)
+        #self.reset_orientation_button.grid(row=1, column=1, sticky="ew", padx=2, pady=2)
+    #
+        #self.rotate_cw_button = ttk.Button(orientation_frame, text="↻ +1°", 
+        #                              command=self.rotate_clockwise)
+        #self.rotate_cw_button.grid(row=1, column=2, sticky="ew", padx=2, pady=2)
     
         # North direction calibration frame
-        north_frame = ttk.LabelFrame(control_frame, text="Set North Direction")
-        north_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
-        north_frame.grid_columnconfigure(0, weight=1)
-        north_frame.grid_columnconfigure(1, weight=1)
-        north_frame.grid_columnconfigure(2, weight=1)
+        #north_frame = ttk.LabelFrame(control_frame, text="Set North Direction")
+        #north_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+        #north_frame.grid_columnconfigure(0, weight=1)
+        #north_frame.grid_columnconfigure(1, weight=1)
+        #north_frame.grid_columnconfigure(2, weight=1)
     
         # Кнопки направлений (как компас)
-        btn_frame = ttk.Frame(north_frame)
-        btn_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=5)
-        btn_frame.grid_columnconfigure(0, weight=1)
-        btn_frame.grid_columnconfigure(1, weight=1)
-        btn_frame.grid_columnconfigure(2, weight=1)
+        #btn_frame = ttk.Frame(north_frame)
+        #btn_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=5)
+        #btn_frame.grid_columnconfigure(0, weight=1)
+        #btn_frame.grid_columnconfigure(1, weight=1)
+        #btn_frame.grid_columnconfigure(2, weight=1)
     
         # Верхняя кнопка (Север)
-        self.north_btn = ttk.Button(btn_frame, text="↑\nNorth", 
-                               command=lambda: self.set_north_direction(0))
-        self.north_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+        #self.north_btn = ttk.Button(btn_frame, text="↑\nNorth", 
+         #                      command=lambda: self.set_north_direction(0))
+        #self.north_btn.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
     
         # Левая кнопка (Запад)
-        self.west_btn = ttk.Button(btn_frame, text="←\nWest", 
-                                  command=lambda: self.set_north_direction(270))
-        self.west_btn.grid(row=1, column=0, padx=2, pady=2, sticky="ew")
+        #self.west_btn = ttk.Button(btn_frame, text="←\nWest", 
+        #                          command=lambda: self.set_north_direction(270))
+        #self.west_btn.grid(row=1, column=0, padx=2, pady=2, sticky="ew")
     
         # Правая кнопка (Восток)
-        self.east_btn = ttk.Button(btn_frame, text="→\nEast", 
-                              command=lambda: self.set_north_direction(90))
-        self.east_btn.grid(row=1, column=2, padx=2, pady=2, sticky="ew")
+        #self.east_btn = ttk.Button(btn_frame, text="→\nEast", 
+        #                      command=lambda: self.set_north_direction(90))
+        #self.east_btn.grid(row=1, column=2, padx=2, pady=2, sticky="ew")
     
         # Нижняя кнопка (Юг)
-        self.south_btn = ttk.Button(btn_frame, text="↓\nSouth", 
-                               command=lambda: self.set_north_direction(180))
-        self.south_btn.grid(row=2, column=1, padx=2, pady=2, sticky="ew")
+        #self.south_btn = ttk.Button(btn_frame, text="↓\nSouth", 
+        #                       command=lambda: self.set_north_direction(180))
+        #self.south_btn.grid(row=2, column=1, padx=2, pady=2, sticky="ew")
     
         # Отображение текущего севера
-        ttk.Label(north_frame, text="Current North:").grid(row=1, column=0, sticky="w", padx=5)
-        self.north_direction_label = ttk.Label(north_frame, text="0°", foreground="blue")
-        self.north_direction_label.grid(row=1, column=1, sticky="w", padx=5)
+        #ttk.Label(north_frame, text="Current North:").grid(row=1, column=0, sticky="w", padx=5)
+        #self.north_direction_label = ttk.Label(north_frame, text="0°", foreground="blue")
+        #self.north_direction_label.grid(row=1, column=1, sticky="w", padx=5)
     
         # Calibration buttons
         calib_frame = ttk.LabelFrame(control_frame, text="Calibration")
@@ -325,7 +324,7 @@ class LiDARApp:
         self.log_text.configure(yscrollcommand=scrollbar.set)
     
         # Initialize direction display
-        self.load_north_direction()
+        #self.load_north_direction()
 
     def init_lidar_async(self):
         """Initialize LiDAR in a separate thread"""
@@ -379,6 +378,19 @@ class LiDARApp:
                 self.log_message("🔍 Touch detector initialized")
         except:
             pass  # No existing background map
+
+        try:
+            # Try to load noise profile
+            noise_profiler = NoiseProfiler()
+            noise_profiler.load_noise_profile()
+            if noise_profiler.noise_profile:
+                # Create noise filter with loaded profile
+                self.noise_filter = NoiseFilter(noise_profiler.noise_profile, self.persistent_noise_manager)
+                self.noise_status.config(text="Loaded", foreground="green")
+                self.log_message("📊 Noise profile loaded")
+        except Exception as e:
+            self.log_message(f"⚠️  Could not load noise profile: {e}")
+        pass  # No existing noise profile
             
         try:
             # Try to load corners
@@ -466,11 +478,11 @@ class LiDARApp:
             
         def profile():
             try:
-                self.log_message("📊 Profiling noise (30 seconds)...")
+                self.log_message("📊 Profiling noise (10 seconds)...")
                 self.log_message("Ensure NO ONE touches the wall!")
                 self.noise_button.config(state="disabled")
                 
-                profiler = NoiseProfiler(duration_seconds=30)
+                profiler = NoiseProfiler(duration_seconds=10)
                 profiler.start_noise_collection(self.lidar, self.detector)
                 
                 # Create noise filter
@@ -491,12 +503,12 @@ class LiDARApp:
         if not self.lidar or not self.detector or not self.noise_filter:
             self.log_message("⚠️  LiDAR, detector, or noise filter not ready")
             return
-            
+        
         def calibrate():
             try:
                 self.log_message(f"⏳ Preparing to calibrate {corner_name} corner...")
                 self.log_message("Please move to the calibration position within 5 seconds...")
-                
+            
                 # Disable corresponding button
                 btn_map = {
                     "top_left": self.top_left_button,
@@ -507,25 +519,25 @@ class LiDARApp:
                 btn = btn_map.get(corner_name)
                 if btn:
                     btn.config(state="disabled")
-                
+            
                 # 5-second countdown
                 for i in range(5, 0, -1):
                     self.countdown_label.config(text=f"Starting calibration in {i} seconds...")
                     self.log_message(f"⏳ {i}...")
                     time.sleep(1)
                 self.countdown_label.config(text="")
-                
+            
                 self.log_message(f"🎯 Calibrating {corner_name} corner...")
-                
+            
                 # Perform corner calibration
                 corner_calibrator = CornerCalibrator(self.noise_filter)
-                result = corner_calibrator.calibrate_corner(self.lidar, self.detector, corner_name)
-                
+                result = corner_calibrator.calibrate_corner(self.lidar, self.detector, corner_name, log_callback=self.log_message)
+            
                 if result:
                     self.log_message(f"✅ {corner_name} corner calibrated successfully")
                     # Update corners data
                     self.update_corners(result)
-                    
+                
                     # Update mouse controller with new corners
                     if self.mouse_controller and self.corners:
                         self.mouse_controller.set_projection_corners(self.corners)
@@ -533,68 +545,76 @@ class LiDARApp:
                         self.log_message("🖱️  Mouse controller updated with new corner")
                 else:
                     self.log_message(f"❌ {corner_name} corner calibration failed")
-                
+            
                 # Re-enable button
                 if btn:
                     btn.config(state="normal")
-                    
+                
             except Exception as e:
                 self.log_message(f"❌ {corner_name} corner calibration error: {e}")
                 # Re-enable button
+                btn_map = {
+                    "top_left": self.top_left_button,
+                    "top_right": self.top_right_button,
+                    "bottom_left": self.bottom_left_button,
+                    "bottom_right": self.bottom_right_button
+                }
+                btn = btn_map.get(corner_name)
                 if btn:
                     btn.config(state="normal")
                 self.countdown_label.config(text="")
-        
+    
         threading.Thread(target=calibrate, daemon=True).start()
+
 
     def calibrate_all_corners(self):
         """Calibrate all corners with 5-second countdown"""
         if not self.lidar or not self.detector or not self.noise_filter:
             self.log_message("⚠️  LiDAR, detector, or noise filter not ready")
             return
-            
+        
         def calibrate_all():
             try:
                 self.log_message("⏳ Preparing to calibrate all corners...")
                 self.log_message("Please move to the first calibration position within 5 seconds...")
-                
+            
                 # Disable all corner buttons
                 buttons = [self.top_left_button, self.top_right_button, 
-                          self.bottom_left_button, self.bottom_right_button,
-                          self.all_corners_button]
+                        self.bottom_left_button, self.bottom_right_button,
+                        self.all_corners_button]
                 for btn in buttons:
                     btn.config(state="disabled")
-                
+            
                 # 5-second countdown
                 for i in range(5, 0, -1):
                     self.countdown_label.config(text=f"Starting calibration in {i} seconds...")
                     self.log_message(f"⏳ {i}...")
                     time.sleep(1)
                 self.countdown_label.config(text="")
-                
+            
                 self.log_message("🎯 Calibrating all corners...")
-                
-                # Perform calibration of all corners
+            
+                # Perform calibration of all corners WITH LOG CALLBACK
                 corner_calibrator = CornerCalibrator(self.noise_filter)
-                corners = corner_calibrator.calibrate_all_corners(self.lidar, self.detector)
-                
+                corners = corner_calibrator.calibrate_all_corners(self.lidar, self.detector, self.log_message)
+            
                 if corners:
                     # Save corners to file
                     corners_data = {
                         'timestamp': time.time(),
                         'corners': corners
                     }
-                    
+                
                     with open(self.projection_corners_file, 'w', encoding='utf-8') as f:
                         json.dump(corners_data, f, ensure_ascii=False, indent=2)
-                        
+                    
                     self.corners = corners
                     self.corners_status.config(text="Calibrated", foreground="green")
                     self.log_message(f"✅ All corners calibrated and saved to '{self.projection_corners_file}'")
-                    
+                
                     # Update plot with corners
                     self.update_plot()
-                    
+                
                     # Update mouse controller with corners
                     if self.mouse_controller:
                         self.mouse_controller.set_projection_corners(corners)
@@ -602,55 +622,76 @@ class LiDARApp:
                         self.log_message("🖱️  Mouse controller updated with all corners")
                 else:
                     self.log_message("❌ All corners calibration failed")
-                
+            
                 # Re-enable buttons
                 for btn in buttons:
                     btn.config(state="normal")
-                    
+                
             except Exception as e:
                 self.log_message(f"❌ All corners calibration error: {e}")
                 # Re-enable buttons
                 buttons = [self.top_left_button, self.top_right_button, 
-                          self.bottom_left_button, self.bottom_right_button,
-                          self.all_corners_button]
+                        self.bottom_left_button, self.bottom_right_button,
+                        self.all_corners_button]
                 for btn in buttons:
                     btn.config(state="normal")
                 self.countdown_label.config(text="")
-        
+    
         threading.Thread(target=calibrate_all, daemon=True).start()
 
+
     def update_corners(self, new_corner):
-        """Update corners data with a new corner"""
+        """Update corners data with a new corner - FIXED VERSION"""
         if not self.corners:
             self.corners = []
-            
-        # Check if corner already exists and update it, otherwise add it
+    
+        # Проверяем, существует ли уже угол с таким именем
         corner_updated = False
         for i, corner in enumerate(self.corners):
             if corner['name'] == new_corner['name']:
+                # Заменяем существующий угол
                 self.corners[i] = new_corner
                 corner_updated = True
+                self.log_message(f"🔄 Угол {new_corner['name']} обновлен")
                 break
-                
+    
+        # Если угол с таким именем не найден, добавляем новый
         if not corner_updated:
             self.corners.append(new_corner)
-            
-        # Save to file
+            self.log_message(f"➕ Добавлен новый угол: {new_corner['name']}")
+    
+        # Убедимся, что у нас максимум 4 угла (удаляем дубликаты по имени)
+        unique_corners = []
+        seen_names = set()
+        for corner in self.corners:
+            if corner['name'] not in seen_names:
+                unique_corners.append(corner)
+                seen_names.add(corner['name'])
+    
+        self.corners = unique_corners
+    
+        # Сохраняем в файл
         corners_data = {
             'timestamp': time.time(),
             'corners': self.corners
         }
-        
+    
         try:
             with open(self.projection_corners_file, 'w', encoding='utf-8') as f:
                 json.dump(corners_data, f, ensure_ascii=False, indent=2)
-            self.corners_status.config(text="Partial", foreground="orange")
-            self.log_message(f"💾 Updated corners data in '{self.projection_corners_file}'")
-        except Exception as e:
-            self.log_message(f"❌ Error saving corners: {e}")
+        
+            if len(self.corners) == 4:
+                self.corners_status.config(text="Complete", foreground="green")
+            else:
+                self.corners_status.config(text=f"{len(self.corners)}/4", foreground="orange")
             
-        # Update plot with corners
+            self.log_message(f"💾 Сохранены данные углов ({len(self.corners)} шт.) в '{self.projection_corners_file}'")
+        except Exception as e:
+            self.log_message(f"❌ Ошибка сохранения углов: {e}")
+    
+        # Обновляем график
         self.update_plot()
+
 
     def enable_mouse_control(self):
         """Enable mouse control"""
@@ -707,24 +748,42 @@ class LiDARApp:
         try:
             scan_counter = 0
             last_update_time = time.time()
-    
+
             # Отслеживание касаний для кликов мышью
             tracked_touches = {}
             frame_counter = 0
-    
+        
+            # Для синхронизации начала скана
+            last_sync_angle = None
+            sync_tolerance = 10.0  # Градусов для синхронизации
+        
             while self.running:
                 current_scan = self.lidar.get_last_scan()
-        
-                if current_scan:
+    
+                if current_scan and len(current_scan) > 0:
+                    # Проверяем синхронизацию начала скана (первая точка около 0°)
+                    first_point_angle = current_scan[0].angle
+                    angle_diff = abs(first_point_angle - 0.0)
+                    # Учитываем переход через 0°
+                    if angle_diff > 180:
+                        angle_diff = 360 - angle_diff
+                    
+                    # Если скан не синхронизирован, пропускаем его
+                    if angle_diff > sync_tolerance:
+                        # Ждем следующий скан
+                        time.sleep(0.005)  # 5ms
+                        continue
+                    
+                    # Синхронизированный скан - обрабатываем его
                     # Применяем коррекцию ориентации если есть
-                    corrected_scan = self.orientation_manager.adjust_points_batch(current_scan)
-            
+                    corrected_scan = current_scan
+        
                     scan_counter += 1
                     frame_counter += 1
-            
+        
                     # Детектируем точки касания (оптимизированная версия)
                     all_touch_points = self.detector.detect_touch_points(corrected_scan)
-            
+        
                     # Фильтруем точки с минимальной обработкой
                     real_touch_points = []
                     for point in all_touch_points:
@@ -734,7 +793,7 @@ class LiDARApp:
                             (not self.noise_filter or 
                             not self.noise_filter.is_false_positive(point)):
                             real_touch_points.append(point)
-            
+        
                     # Точки внутри рамки проекции
                     frame_touch_points = []
                     if self.corners:
@@ -743,27 +802,27 @@ class LiDARApp:
                                 frame_touch_points.append(point)
                     else:
                         frame_touch_points = real_touch_points[:10]  # Ограничиваем количество
-            
+        
                     # Обновляем график с новыми данными (опционально, реже)
                     current_time = time.time()
                     if current_time - last_update_time > 0.016:  # ~60 FPS
                         self.update_plot(corrected_scan, frame_touch_points)
                         last_update_time = current_time
-            
+        
                     # Управление мышью - оптимизированное отслеживание
                     if (self.mouse_controller and self.mouse_controller.is_active and 
                         frame_touch_points):
-                
+            
                         # Используем более агрессивную фильтрацию для мыши
                         stable_touch_points = frame_touch_points[:3]  # Только первые 3 точки
-                
+            
                         current_touch_keys = set()
-                
+            
                         # Быстрое обновление отслеживания
                         for touch_point in stable_touch_points:
                             touch_key = (round(touch_point.angle, 0), round(touch_point.distance, -1))  # Грубее группировка
                             current_touch_keys.add(touch_key)
-                    
+                
                             if touch_key not in tracked_touches:
                                 tracked_touches[touch_key] = {
                                     'point': touch_point,
@@ -776,7 +835,7 @@ class LiDARApp:
                                     self.mouse_controller.move_mouse_to_touch(touch_point)
                                 except:
                                     pass
-                
+            
                         # Проверяем завершение касаний чаще
                         if frame_counter % 2 == 0:  # Каждый второй кадр
                             finished_touches = set(tracked_touches.keys()) - current_touch_keys
@@ -792,23 +851,24 @@ class LiDARApp:
                                         self.log_message(f"⚠️  Mouse click error: {e}")
                                 # Удаляем отслеживание
                                 del tracked_touches[touch_key]
-            
+        
                     # Очень редкое логирование
                     if scan_counter % 50 == 0:  # Каждые 50 сканов
-                        self.log_message(f"FPS: {1/(time.time()-last_update_time):.0f} | Touches: {len(frame_touch_points)}")
-        
-                # Минимальная задержка
-                time.sleep(0.01)  # 10 мс вместо 50 мс
+                        self.log_message(f"FPS: {1/(time.time()-last_update_time):.0f} | Touches: {len(frame_touch_points)} | Sync angle: {first_point_angle:.1f}°")
     
+                # Минимальная задержка
+                time.sleep(0.005)  # 5 ms вместо 10 мс для лучшей отзывчивости
+
         except Exception as e:
             self.log_message(f"❌ Detection error: {e}")
             traceback.print_exc()  # Добавляем трассировку для диагностики
             self.running = False
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
-    
+
             if self.mouse_controller:
                 self.mouse_controller.clear_all_touches()
+
 
 
 
@@ -836,33 +896,21 @@ class LiDARApp:
                 # Plot all scan points in blue
                 # self.ax.scatter(np.radians(angles), distances, c='blue', s=10, alpha=0.6, label='Scan Points')
     
-            # Plot touch points if provided (ТОЛЬКО ТЕ, КОТОРЫЕ ВНУТРИ РАМКИ)
-            if touch_points and self.corners:
-                # Фильтруем только точки внутри рабочего поля с помощью ИСПРАВЛЕННОГО метода
-                filtered_touch_points = []
-                for point in touch_points:
-                    if self.point_in_polygon_fast(point, self.corners):
-                        filtered_touch_points.append(point)
-        
-                if filtered_touch_points:
-                    touch_angles = [point.angle for point in filtered_touch_points]
-                    touch_distances = [point.distance for point in filtered_touch_points]
-                    self.ax.scatter(np.radians(touch_angles), touch_distances, 
-                           c='red', s=50, alpha=0.8, marker='o', label='Touch Points')
-            elif touch_points and not self.corners:
-                # Если углы не заданы, показываем все касания
+            # Plot touch points if provided
+            if touch_points:
                 touch_angles = [point.angle for point in touch_points]
                 touch_distances = [point.distance for point in touch_points]
                 self.ax.scatter(np.radians(touch_angles), touch_distances, 
-                           c='red', s=50, alpha=0.8, marker='o', label='Touch Points')
+                            c='red', s=50, alpha=0.8, marker='o', label='Touch Points')
     
             # Plot corners if available
             if self.corners:
                 corner_angles = [corner['angle'] for corner in self.corners]
                 corner_distances = [corner['distance'] for corner in self.corners]
+                # Отображаем углы без подписей
                 self.ax.scatter(np.radians(corner_angles), corner_distances, 
-                           c='orange', s=100, alpha=0.9, marker='s', 
-                           label='Projection Corners', edgecolors='black', linewidth=2)
+                            c='orange', s=100, alpha=0.9, marker='s', 
+                            label='Projection Corners', edgecolors='black', linewidth=2)
     
             # Add legend
             self.ax.legend()
@@ -874,6 +922,7 @@ class LiDARApp:
             self.log_message(f"Plot update error: {e}")
 
 
+
     def point_in_polygon_fast(self, point: Point, polygon_corners: List[dict]) -> bool:
         """Проверка точки внутри прямоугольной рамки в декартовых координатах"""
         if not polygon_corners or len(polygon_corners) < 4:
@@ -882,8 +931,8 @@ class LiDARApp:
         # Преобразуем точку в декартовы координаты
         def polar_to_cartesian(angle_deg, distance):
             # Учитываем ориентацию если есть
-            if hasattr(self, 'orientation_manager'):
-                angle_deg = self.orientation_manager.adjust_angle_raw(angle_deg)
+            #if hasattr(self, 'orientation_manager'):
+                #angle_deg = self.orientation_manager.adjust_angle_raw(angle_deg)
             angle_rad = np.radians(angle_deg)
             x = distance * np.cos(angle_rad)
             y = distance * np.sin(angle_rad)
@@ -934,90 +983,90 @@ class LiDARApp:
                 pass
         
         # Вызов функции очистки файлов
-        cleanup_files()
+        #cleanup_files()
         
         self.root.quit()
         self.root.destroy()
 
-    def rotate_clockwise(self):
-        """Поворот по часовой стрелке"""
-        new_angle = self.orientation_manager.rotate_clockwise(1.0)
-        self.update_orientation_display()
-        self.log_message(f"🧭 Orientation rotated clockwise: {new_angle:.1f}°")
+    #def rotate_clockwise(self):
+        #"""Поворот по часовой стрелке"""
+        #new_angle = self.orientation_manager.rotate_clockwise(1.0)
+        #self.update_orientation_display()
+        #self.log_message(f"🧭 Orientation rotated clockwise: {new_angle:.1f}°")
 
-    def rotate_counterclockwise(self):
-        """Поворот против часовой стрелки"""
-        new_angle = self.orientation_manager.rotate_counterclockwise(1.0)
-        self.update_orientation_display()
-        self.log_message(f"🧭 Orientation rotated counterclockwise: {new_angle:.1f}°")
+    #def rotate_counterclockwise(self):
+        #"""Поворот против часовой стрелки"""
+        #new_angle = self.orientation_manager.rotate_counterclockwise(1.0)
+        #self.update_orientation_display()
+        #self.log_message(f"🧭 Orientation rotated counterclockwise: {new_angle:.1f}°")
 
-    def reset_orientation(self):
-        """Сброс ориентации на 0°"""
-        self.orientation_manager.set_orientation(0.0)
-        self.update_orientation_display()
-        self.log_message("🧭 Orientation reset to 0°")
+    #def reset_orientation(self):
+        #"""Сброс ориентации на 0°"""
+        #self.orientation_manager.set_orientation(0.0)
+        #self.update_orientation_display()
+        #self.log_message("🧭 Orientation reset to 0°")
 
-    def update_orientation_display(self):
-        """Обновление отображения ориентации"""
-        current_angle = self.orientation_manager.get_orientation()
-        self.orientation_label.config(text=f"{current_angle:.1f}°")
+    #def update_orientation_display(self):
+        #"""Обновление отображения ориентации"""
+        #current_angle = self.orientation_manager.get_orientation()
+        #self.orientation_label.config(text=f"{current_angle:.1f}°")
         
         # Измени цвет в зависимости от угла
-        if abs(current_angle) < 0.1:
-            self.orientation_label.config(foreground="green")
-        elif abs(current_angle) > 90:
-            self.orientation_label.config(foreground="red")
-        else:
-            self.orientation_label.config(foreground="blue")
+       # if abs(current_angle) < 0.1:
+           #self.orientation_label.config(foreground="green")
+        #elif abs(current_angle) > 90:
+            #self.orientation_label.config(foreground="red")
+        #else:
+            #self.orientation_label.config(foreground="blue")
 
-    def set_north_direction(self, angle_degrees):
-        """Устанавливает направление севера"""
-        self.orientation_manager.set_orientation(angle_degrees)
-        self.north_direction_label.config(text=f"{angle_degrees:.0f}°")
-        self.log_message(f"🧭 North direction set to {angle_degrees:.0f}°")
+    #def set_north_direction(self, angle_degrees):
+        #"""Устанавливает направление севера"""
+        #self.orientation_manager.set_orientation(angle_degrees)
+        #self.north_direction_label.config(text=f"{angle_degrees:.0f}°")
+        #self.log_message(f"🧭 North direction set to {angle_degrees:.0f}°")
     
         # Обновляем mouse controller если он существует
-        if self.mouse_controller:
-            self.mouse_controller.north_angle = angle_degrees
+        #if self.mouse_controller:
+            #self.mouse_controller.north_angle = angle_degrees
 
-    def save_north_calibration(self):
-        """Сохраняет калибровку севера в файл"""
-        try:
-            current_angle = self.orientation_manager.get_orientation()
-            config_data = {
-                'north_offset': current_angle,
-                'timestamp': time.time()
-            }
-            with open('north_calibration.json', 'w') as f:
-                json.dump(config_data, f, indent=2)
-        except Exception as e:
-            self.log_message(f"⚠️ Error saving north calibration: {e}")
+    #def save_north_calibration(self):
+        #"""Сохраняет калибровку севера в файл"""
+        #try:
+            #current_angle = self.orientation_manager.get_orientation()
+            #config_data = {
+                #'north_offset': current_angle,
+                #'timestamp': time.time()
+            #}
+            #with open('north_calibration.json', 'w') as f:
+                #json.dump(config_data, f, indent=2)
+        #except Exception as e:
+            #self.log_message(f"⚠️ Error saving north calibration: {e}")
 
-    def load_north_calibration(self):
-        """Загружает калибровку севера из файла"""
-        try:
-            if os.path.exists('north_calibration.json'):
-                with open('north_calibration.json', 'r') as f:
-                    config_data = json.load(f)
-                    north_offset = config_data.get('north_offset', 0.0)
-                    self.orientation_manager.set_orientation(north_offset)
-                    self.log_message(f"🧭 Loaded north calibration: {north_offset:.1f}°")
-        except Exception as e:
-            self.log_message(f"⚠️ Error loading north calibration: {e}")
+    #def load_north_calibration(self):
+        #"""Загружает калибровку севера из файла"""
+        #try:
+            #if os.path.exists('north_calibration.json'):
+                #with open('north_calibration.json', 'r') as f:
+                    #config_data = json.load(f)
+                    #north_offset = config_data.get('north_offset', 0.0)
+                    #self.orientation_manager.set_orientation(north_offset)
+                    #self.log_message(f"🧭 Loaded north calibration: {north_offset:.1f}°")
+        #except Exception as e:
+            #self.log_message(f"⚠️ Error loading north calibration: {e}")
 
-    def load_north_direction(self):
-        """Загружает направление севера из файла"""
-        try:
-            if os.path.exists('north_direction.json'):
-                with open('north_direction.json', 'r') as f:
-                    config_data = json.load(f)
-                    north_angle = config_data.get('north_angle', 0.0)
-                    self.orientation_manager.set_orientation(north_angle)
-                    self.north_direction_label.config(text=f"{north_angle:.0f}°")
-                    self.log_message(f"🧭 Loaded north direction: {north_angle:.0f}°")
-        except Exception as e:
-            self.log_message(f"⚠️ Error loading north direction: {e}")
-            self.orientation_manager.set_orientation(0.0)
+    #def load_north_direction(self):
+        #"""Загружает направление севера из файла"""
+        #try:
+            #if os.path.exists('north_direction.json'):
+                #with open('north_direction.json', 'r') as f:
+                    #config_data = json.load(f)
+                    #north_angle = config_data.get('north_angle', 0.0)
+                    #self.orientation_manager.set_orientation(north_angle)
+                    #self.north_direction_label.config(text=f"{north_angle:.0f}°")
+                    #self.log_message(f"🧭 Loaded north direction: {north_angle:.0f}°")
+        #except Exception as e:
+            #self.log_message(f"⚠️ Error loading north direction: {e}")
+            #self.orientation_manager.set_orientation(0.0)
 
 def main(): 
     root = tk.Tk()

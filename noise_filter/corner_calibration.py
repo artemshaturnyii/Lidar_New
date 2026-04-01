@@ -2,7 +2,7 @@
 
 import time
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Callable
 from lidar_sdk import Point
 
 class CornerCalibrator:
@@ -11,7 +11,7 @@ class CornerCalibrator:
     def __init__(self, noise_filter=None):
         self.noise_filter = noise_filter
         
-    def calibrate_corner(self, lidar, detector, corner_name: str, scan_count: int = 20) -> Dict:
+    def calibrate_corner(self, lidar, detector, corner_name: str, scan_count: int = 20, log_callback: Callable = None) -> Dict:
         """
         Калибрует один угол - находит точку, которая встречается во всех сканах
         
@@ -20,12 +20,19 @@ class CornerCalibrator:
             detector: детектор касаний
             corner_name: название угла
             scan_count: количество сканов для сбора
+            log_callback: функция для логирования сообщений
             
         Returns:
             Dict с координатами угла
         """
-        print(f"🎯 Калибровка угла: {corner_name}")
-        print(f"Сбор {scan_count} сканов...")
+        def log(message):
+            if log_callback:
+                log_callback(message)
+            else:
+                print(message)
+                
+        log(f"🎯 Начинаем калибровку угла: {corner_name}")
+        log(f"Сбор {scan_count} сканов...")
         
         scan_collection = []  # Список сканов
         scan_counter = 0
@@ -46,9 +53,9 @@ class CornerCalibrator:
                 if filtered_points:
                     scan_collection.append(filtered_points)
                     scan_counter += 1
-                    print(f"  Собран скан {scan_counter}/{scan_count}")
+                    log(f"  Собран скан {scan_counter}/{scan_count} для угла {corner_name}")
                 else:
-                    print(f"  Скан {scan_counter + 1}: нет касаний")
+                    log(f"  Скан {scan_counter + 1}: нет касаний для угла {corner_name}")
                     
             time.sleep(0.1)
         
@@ -59,8 +66,8 @@ class CornerCalibrator:
         common_points = self._find_common_points(scan_collection)
         
         if not common_points:
-            print("⚠️  Не найдено точек, встречающихся во всех сканах")
-            print("Попробуем найти точки, встречающиеся в большинстве сканов...")
+            log(f"⚠️  Не найдено точек, встречающихся во всех сканах для угла {corner_name}")
+            log("Попробуем найти точки, встречающиеся в большинстве сканов...")
             common_points = self._find_majority_points(scan_collection, threshold=0.8)
         
         if not common_points:
@@ -84,10 +91,10 @@ class CornerCalibrator:
             'total_scans': len(scan_collection)
         }
         
-        print(f"✅ Угол {corner_name} откалиброван:")
-        print(f"   Угол: {avg_angle:.2f}° (±{angle_std:.2f}°)")
-        print(f"   Расстояние: {avg_distance:.0f}мм (±{distance_std:.0f}мм)")
-        print(f"   Стабильных точек: {len(common_points)} из {len(scan_collection)} сканов")
+        log(f"✅ Угол {corner_name} успешно откалиброван:")
+        log(f"   Угол: {avg_angle:.2f}° (±{angle_std:.2f}°)")
+        log(f"   Расстояние: {avg_distance:.0f}мм (±{distance_std:.0f}мм)")
+        log(f"   Стабильных точек: {len(common_points)} из {len(scan_collection)} сканов")
         
         return corner_data
     
@@ -198,50 +205,59 @@ class CornerCalibrator:
         
         return majority_points
     
-    def calibrate_all_corners(self, lidar, detector) -> List[Dict]:
+    def calibrate_all_corners(self, lidar, detector, log_callback: Callable = None) -> List[Dict]:
         """Калибрует все 4 угла проекции с временными задержками"""
+        def log(message):
+            if log_callback:
+                log_callback(message)
+            else:
+                print(message)
+            
+        # Используем только английские названия
         corner_names = [
-            "верхний правый",
-            "нижний правый", 
-            "нижний левый",
-            "верхний левый"
+            "top_right",
+            "bottom_right", 
+            "bottom_left",
+            "top_left"
         ]
-        
-        print("🔄 Начинаем калибровку всех углов проекции")
-        print("Пожалуйста, подготовьтесь к калибровке углов")
-        print("⏳ Ожидание 10 секунд перед началом...")
+    
+        log("🔄 Starting calibration of all projection corners")
+        log("Please prepare for corner calibration")
+        log("⏳ Waiting 10 seconds before starting...")
         time.sleep(10)
-        
+    
         corners = []
         for i, corner_name in enumerate(corner_names):
-            print(f"\n{'='*60}")
-            print(f"Калибровка угла {i+1}/4: {corner_name}")
-            print(f"{'='*60}")
-            
+            log(f"\n{'='*60}")
+            log(f"🔍 CURRENT STEP: Calibrating corner {i+1}/4")
+            log(f"📍 CORNER TO CALIBRATE: {corner_name.upper()}")
+            log(f"{'='*60}")
+        
             # Перед первым углом дополнительная пауза не нужна (уже была)
             if i > 0:
-                print(f"⏳ Ожидание 3 секунд для перехода к углу '{corner_name}'...")
+                log(f"⏳ Waiting 3 seconds to move to corner '{corner_name}'...")
                 time.sleep(3)
-            
+        
             try:
-                corner_data = self.calibrate_corner(lidar, detector, corner_name, scan_count=20)
+                corner_data = self.calibrate_corner(lidar, detector, corner_name, scan_count=20, log_callback=log_callback)
                 corners.append(corner_data)
-                
+            
                 # Пауза после калибровки угла (кроме последнего)
                 if i < len(corner_names) - 1:
-                    print(f"⏳ Ожидание 3 секунд до следующего угла...")
+                    log(f"✅ Corner {corner_name} completed. Prepare for next corner...")
+                    log(f"⏳ Waiting 3 seconds until next corner...")
                     time.sleep(3)
-                    
+                
             except Exception as e:
-                print(f"❌ Ошибка калибровки угла {corner_name}: {e}")
+                log(f"❌ ERROR calibrating corner {corner_name}: {e}")
                 # Продолжаем с другими углами
                 if i < len(corner_names) - 1:
-                    print(f"⏳ Ожидание 3 секунд до следующего угла...")
+                    log(f"⏳ Moving to next corner in 3 seconds...")
                     time.sleep(3)
                 continue
-        
-        print(f"\n{'='*60}")
-        print("✅ Калибровка всех углов завершена!")
-        print(f"{'='*60}")
-        
+    
+        log(f"\n{'='*60}")
+        log("🎉 ALL CORNERS SUCCESSFULLY CALIBRATED!")
+        log(f"{'='*60}")
+    
         return corners
