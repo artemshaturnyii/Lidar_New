@@ -18,13 +18,13 @@ class ThresholdConfig:
     """
     
     # Основные пороги
-    min_distance_deviation: float = 100.0  # мм - только объекты, ближе на 100+ мм
-    max_background_distance: float = 3000.0  # мм
-    min_confidence: float = 150.0  # 0-255
+    min_distance_deviation: float = 10.0  # мм - только объекты, ближе на 100+ мм
+    max_background_distance: float = 5000.0  # мм
+    min_confidence: float = 100.0  # 0-255
     
     # Группировка точек
-    angle_window: float = 10.0  # градусы
-    min_touch_points: int = 3  # минимальное количество точек в группе
+    angle_window: float = 5.0  # градусы
+    min_touch_points: int = 5  # минимальное количество точек в группе
     
     # Адаптивная чувствительность
     adaptive_threshold_multiplier: float = 0.1  # множитель для адаптивного порога (% от фона)

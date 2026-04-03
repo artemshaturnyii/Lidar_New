@@ -22,6 +22,9 @@ from noise_filter.corner_calibration import CornerCalibrator
 import queue
 import threading
 import traceback
+import pyautogui
+
+PYAUTOGUI_AVAILABLE = True
 
 # Добавляем импорт mouse_controller
 try:
@@ -744,130 +747,144 @@ class LiDARApp:
         self.log_message("⏹️ Stopping real-time detection...")
 
     def run_detection(self):
-        """Run the real-time detection loop"""
+        """Run the real-time detection loop - восстановленная версия"""
         try:
             scan_counter = 0
             last_update_time = time.time()
+            last_valid_scan_time = time.time()
+            last_click_time = 0
 
-            # Отслеживание касаний для кликов мышью
+            # Отслеживание касаний
             tracked_touches = {}
             frame_counter = 0
-        
+
             # Для синхронизации начала скана
-            last_sync_angle = None
-            sync_tolerance = 10.0  # Градусов для синхронизации
+            sync_tolerance = 3.0  # Очень строгая синхронизация
+    
+            # Получаем параметры из конфигурации
+            mouse_config = config.get_mouse_params()
+            max_touch_points = mouse_config.get('max_touch_points', 5)
+            click_delay = mouse_config.get('click_delay', 0.3)
         
             while self.running:
                 current_scan = self.lidar.get_last_scan()
-    
+
                 if current_scan and len(current_scan) > 0:
-                    # Проверяем синхронизацию начала скана (первая точка около 0°)
+                    # СТРОГАЯ проверка синхронизации начала скана (0° ± tolerance)
                     first_point_angle = current_scan[0].angle
                     angle_diff = abs(first_point_angle - 0.0)
-                    # Учитываем переход через 0°
                     if angle_diff > 180:
                         angle_diff = 360 - angle_diff
-                    
-                    # Если скан не синхронизирован, пропускаем его
+                
+                    # Только сканы, начинающиеся с 0°
                     if angle_diff > sync_tolerance:
-                        # Ждем следующий скан
-                        time.sleep(0.005)  # 5ms
+                        time.sleep(0.0001)
                         continue
-                    
-                    # Синхронизированный скан - обрабатываем его
-                    # Применяем коррекцию ориентации если есть
+                
+                    # Это валидный скан, начинающийся с 0°
+                    last_valid_scan_time = time.time()
                     corrected_scan = current_scan
-        
                     scan_counter += 1
                     frame_counter += 1
-        
-                    # Детектируем точки касания (оптимизированная версия)
+
+                    # Детектируем точки касания
                     all_touch_points = self.detector.detect_touch_points(corrected_scan)
-        
-                    # Фильтруем точки с минимальной обработкой
+
+                    # Фильтруем точки
                     real_touch_points = []
                     for point in all_touch_points:
-                        # Быстрая проверка без обращения к файлам
                         if (not self.persistent_noise_manager or 
                             not self.persistent_noise_manager.is_persistent_noise(point)) and \
                             (not self.noise_filter or 
                             not self.noise_filter.is_false_positive(point)):
                             real_touch_points.append(point)
-        
-                    # Точки внутри рамки проекции
+
+                    # Точки внутри рамки проекции (ограничиваем до 3 точек)
                     frame_touch_points = []
                     if self.corners:
-                        for point in real_touch_points[:10]:  # Ограничиваем количество точек
+                        touch_count = 0
+                        for point in real_touch_points:
+                            if touch_count >= 3:
+                                break
                             if self.point_in_polygon_fast(point, self.corners):
                                 frame_touch_points.append(point)
+                                touch_count += 1
                     else:
-                        frame_touch_points = real_touch_points[:10]  # Ограничиваем количество
-        
-                    # Обновляем график с новыми данными (опционально, реже)
+                        frame_touch_points = real_touch_points[:3]
+
+                    # Обновляем график
                     current_time = time.time()
-                    if current_time - last_update_time > 0.016:  # ~60 FPS
-                        self.update_plot(corrected_scan, frame_touch_points)
+                    if current_time - last_update_time > 0.02:
+                        self.update_plot_fast(corrected_scan, frame_touch_points)
                         last_update_time = current_time
-        
-                    # Управление мышью - оптимизированное отслеживание
+
+                    # Управление мышью - восстановленная логика
                     if (self.mouse_controller and self.mouse_controller.is_active and 
                         frame_touch_points):
-            
-                        # Используем более агрессивную фильтрацию для мыши
-                        stable_touch_points = frame_touch_points[:3]  # Только первые 3 точки
-            
+                    
+                        # Берем первую точку для движения мыши
+                        primary_touch = frame_touch_points[0]
+                    
+                        # Создаем ключ для отслеживания
+                        touch_key = (round(primary_touch.angle, 1), round(primary_touch.distance, -1))
+                        current_touch_keys = {touch_key}
+                    
+                        # Перемещаем мышь сразу
+                        try:
+                            self.mouse_controller.move_mouse_to_touch(primary_touch)
+                        except:
+                            pass
+                    
+                        # Проверяем начало нового касания
+                        if touch_key not in tracked_touches:
+                            tracked_touches[touch_key] = {
+                                'point': primary_touch,
+                                'start_time': time.time()
+                            }
+                    
+                       
+                        
+                    elif self.mouse_controller and self.mouse_controller.is_active:
+                        # Нет касания - проверяем завершение существующих касаний
                         current_touch_keys = set()
-            
-                        # Быстрое обновление отслеживания
-                        for touch_point in stable_touch_points:
-                            touch_key = (round(touch_point.angle, 0), round(touch_point.distance, -1))  # Грубее группировка
-                            current_touch_keys.add(touch_key)
-                
-                            if touch_key not in tracked_touches:
-                                tracked_touches[touch_key] = {
-                                    'point': touch_point,
-                                    'start_frame': frame_counter,
-                                    'start_time': time.time(),  # Добавляем время начала
-                                    'last_update': frame_counter
-                                }
-                                # Мгновенное перемещение мыши
-                                try:
-                                    self.mouse_controller.move_mouse_to_touch(touch_point)
-                                except:
-                                    pass
-            
-                        # Проверяем завершение касаний чаще
-                        if frame_counter % 2 == 0:  # Каждый второй кадр
-                            finished_touches = set(tracked_touches.keys()) - current_touch_keys
-                            for touch_key in finished_touches:
-                                touch_info = tracked_touches[touch_key]
-                                # Проверяем минимальную длительность касания (0.1 секунды)
-                                if time.time() - touch_info['start_time'] >= 0.1:
+                        finished_touches = set(tracked_touches.keys()) - current_touch_keys
+                    
+                        for finished_key in finished_touches:
+                            touch_info = tracked_touches[finished_key]
+                            # Проверяем минимальную длительность касания
+                            if time.time() - touch_info['start_time'] >= 0.1:
+                                # Выполняем клик при отпускании касания
+                                if time.time() - last_click_time >= click_delay:
                                     try:
-                                        # Выполняем клик при отпускании касания
-                                        self.mouse_controller.click_at_touch(touch_info['point'])
-                                        self.log_message(f"🖱️  Mouse click executed")
+                                     # Используем позицию последнего известного касания
+                                        if 'point' in touch_info:
+                                            screen_coords = self.mouse_controller.map_touch_to_screen(touch_info['point'])
+                                            if screen_coords:
+                                                x, y = screen_coords
+                                                pyautogui.click(x, y)
+                                                last_click_time = time.time()
+                                                self.log_message("🖱️  Mouse click executed at touch release")
                                     except Exception as e:
                                         self.log_message(f"⚠️  Mouse click error: {e}")
-                                # Удаляем отслеживание
-                                del tracked_touches[touch_key]
-        
-                    # Очень редкое логирование
-                    if scan_counter % 50 == 0:  # Каждые 50 сканов
-                        self.log_message(f"FPS: {1/(time.time()-last_update_time):.0f} | Touches: {len(frame_touch_points)} | Sync angle: {first_point_angle:.1f}°")
-    
+                            # Удаляем отслеживание
+                            del tracked_touches[finished_key]
+
+                    # Редкое логирование
+                    if scan_counter % 100 == 0:
+                        self.log_message(f"FPS: {1/(time.time()-last_update_time):.0f} | Touches: {len(frame_touch_points)} | Angle: {first_point_angle:.2f}°")
+
                 # Минимальная задержка
-                time.sleep(0.005)  # 5 ms вместо 10 мс для лучшей отзывчивости
+                time.sleep(0.001)
 
         except Exception as e:
             self.log_message(f"❌ Detection error: {e}")
-            traceback.print_exc()  # Добавляем трассировку для диагностики
+            traceback.print_exc()
             self.running = False
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
 
             if self.mouse_controller:
-                self.mouse_controller.clear_all_touches()
+                self.mouse_controller.disable_control()
 
 
 

@@ -1,0 +1,47 @@
+{
+  "95.0": {
+    "avg_distance": 1210.804347826087,
+    "frequency": 4.6,
+    "count": 46
+  },
+  "105.0": {
+    "avg_distance": 93.55932203389831,
+    "frequency": 5.9,
+    "count": 59
+  },
+  "100.0": {
+    "avg_distance": 859.9677419354839,
+    "frequency": 3.1,
+    "count": 31
+  },
+  "250.0": {
+    "avg_distance": 840.625,
+    "frequency": 0.8,
+    "count": 8
+  },
+  "260.0": {
+    "avg_distance": 1536.3333333333333,
+    "frequency": 0.9,
+    "count": 9
+  },
+  "255.0": {
+    "avg_distance": 1265.8666666666666,
+    "frequency": 3.0,
+    "count": 30
+  },
+  "240.0": {
+    "avg_distance": 52.625,
+    "frequency": 2.4,
+    "count": 24
+  },
+  "245.0": {
+    "avg_distance": 756.5185185185185,
+    "frequency": 2.7,
+    "count": 27
+  },
+  "235.0": {
+    "avg_distance": 48.0,
+    "frequency": 0.3,
+    "count": 3
+  }
+}

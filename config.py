@@ -37,6 +37,16 @@ PERFORMANCE_CONFIG = {
     'fast_mode': True,
 }
 
+# Параметры управления мышью
+MOUSE_CONFIG = {
+    'stability_threshold': 5.0,      # Порог стабильности в пикселях
+    'min_stable_frames': 3,          # Минимум кадров для стабильности
+    'click_delay': 0.02,              # Задержка после клика в секундах
+    'position_smoothing': 0.3,       # Фактор сглаживания позиции (0.0-1.0)
+    'max_touch_points': 10,          # Максимум обрабатываемых точек касания
+    'touch_tracking_timeout': 2.0,   # Таймаут отслеживания касания в секундах
+}
+
 class Config:
     """Центральный класс конфигурации"""
     
@@ -45,6 +55,8 @@ class Config:
         self.calibration = CALIBRATION_CONFIG.copy()
         self.processing = PROCESSING_CONFIG.copy()
         self.display = DISPLAY_CONFIG.copy()
+        self.performance = PERFORMANCE_CONFIG.copy()
+        self.mouse = MOUSE_CONFIG.copy()
     
     def update_lidar_config(self, host=None, port=None, timeout=None):
         """Обновление параметров подключения"""
@@ -65,8 +77,17 @@ class Config:
 
     def get_performance_params(self):
         """Получение параметров производительности"""
-        return PERFORMANCE_CONFIG.copy()
+        return self.performance.copy()
+    
+    def get_mouse_params(self):
+        """Получение параметров управления мышью"""
+        return self.mouse.copy()
+    
+    def update_mouse_config(self, **kwargs):
+        """Обновление параметров управления мышью"""
+        for key, value in kwargs.items():
+            if key in self.mouse:
+                self.mouse[key] = value
 
 # Глобальная конфигурация
 config = Config()
-
