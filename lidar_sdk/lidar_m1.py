@@ -140,21 +140,17 @@ class LidarM1:
 
     def _process_packet(self, data):
         """Обрабатывает один пакет, разбирает точки и определяет завершение оборота."""
-        # print(f"🔧 Обработка пакета, размер: {len(data)} байт")
-        
         parsed = self._parse_packet(data)
         if parsed is None:
-            # print("⚠️  Не удалось распарсить пакет")
             return
-            
+        
         start_angle, end_angle, nodes = parsed
-        # print(f"📊 Пакет распознан: {start_angle:.1f}° → {end_angle:.1f}° ({len(nodes)} точек)")
 
         # Вычисляем шаг угла между точками в пакете
         if end_angle < start_angle:
-            step = (end_angle + 360 - start_angle) / (NODES_PER_PACK - 1)
+            step = (end_angle + 360 - start_angle) / (len(nodes) - 1)
         else:
-            step = (end_angle - start_angle) / (NODES_PER_PACK - 1)
+            step = (end_angle - start_angle) / (len(nodes) - 1)
 
         # Обрабатываем каждую точку пакета
         for i, (dist, conf) in enumerate(nodes):
@@ -162,14 +158,25 @@ class LidarM1:
             pt = Point(angle=angle, distance=float(dist), intensity=float(conf))
 
             with self.lock:
-                # Если есть предыдущая точка и угол уменьшился (переход через 0°)
-                if self._last_angle is not None and angle < self._last_angle - 300:
-                    # Завершаем текущий оборот
-                    if self._current_scan:
-                        self._last_scan = self._current_scan.copy()
-                        if self.on_scan_complete:
-                            self.on_scan_complete(self._last_scan)
-                    self._current_scan = []
+                # Более точная проверка завершения оборота
+                if self._last_angle is not None:
+                    angle_diff = (angle - self._last_angle) % 360
+                    # Если угол "проскочил" назад более чем на 300°, это начало нового оборота
+                    if angle_diff < -300 or angle_diff > 300:
+                        # Корректируем переход через 0°
+                        if angle_diff > 300:  # Переход от ~359° к ~1°
+                            angle_diff = angle_diff - 360
+                        elif angle_diff < -300:  # Переход от ~1° к ~359°
+                            angle_diff = angle_diff + 360
+                
+                    # Если угол действительно уменьшился значительно - начало нового оборота
+                    if angle < self._last_angle - 300:
+                        # Завершаем текущий оборот
+                        if self._current_scan:
+                            self._last_scan = self._current_scan.copy()
+                            if self.on_scan_complete:
+                                self.on_scan_complete(self._last_scan)
+                        self._current_scan = []
 
                 # Добавляем точку в текущий оборот
                 self._current_scan.append(pt)
@@ -177,6 +184,7 @@ class LidarM1:
 
                 if self.on_point_received:
                     self.on_point_received(pt)
+
 
     def get_last_scan(self) -> List[Point]:
         """Возвращает последний завершённый скан (копию)."""
