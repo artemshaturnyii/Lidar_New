@@ -747,7 +747,7 @@ class LiDARApp:
         self.log_message("⏹️ Stopping real-time detection...")
 
     def run_detection(self):
-        """Run the real-time detection loop - восстановленная версия"""
+        """Run the real-time detection loop - улучшенная версия с проверкой качества скана"""
         try:
             scan_counter = 0
             last_update_time = time.time()
@@ -760,7 +760,7 @@ class LiDARApp:
 
             # Для синхронизации начала скана
             sync_tolerance = 3.0  # Очень строгая синхронизация
-    
+
             # Получаем параметры из конфигурации
             mouse_config = config.get_mouse_params()
             max_touch_points = mouse_config.get('max_touch_points', 5)
@@ -769,16 +769,25 @@ class LiDARApp:
             while self.running:
                 current_scan = self.lidar.get_last_scan()
 
-                if current_scan and len(current_scan) > 0:
+                if current_scan and len(current_scan) >= 10:  # Минимум 10 точек для валидного скана
+                    # Проверяем качество скана - должны быть разумные углы
+                    angles = [p.angle for p in current_scan]
+                    if len(angles) > 1:
+                        angle_range = max(angles) - min(angles)
+                        # Если разброс углов слишком маленький (< 5°) - это плохой скан
+                        if angle_range < 5:
+                            time.sleep(0.001)
+                            continue
+                
                     # СТРОГАЯ проверка синхронизации начала скана (0° ± tolerance)
-                    first_point_angle = current_scan[0].angle
+                    first_point_angle = current_scan[0].angle if current_scan else 0
                     angle_diff = abs(first_point_angle - 0.0)
                     if angle_diff > 180:
                         angle_diff = 360 - angle_diff
                 
-                    # Только сканы, начинающиеся с 0°
+                    # Только сканы, начинающиеся с 0° (или близко к нему)
                     if angle_diff > sync_tolerance:
-                        time.sleep(0.0001)
+                        time.sleep(0.02)
                         continue
                 
                     # Это валидный скан, начинающийся с 0°
@@ -786,6 +795,9 @@ class LiDARApp:
                     corrected_scan = current_scan
                     scan_counter += 1
                     frame_counter += 1
+
+                    # Сортируем скан по углу для стабильности обработки
+                    corrected_scan = sorted(corrected_scan, key=lambda p: p.angle)
 
                     # Детектируем точки касания
                     all_touch_points = self.detector.detect_touch_points(corrected_scan)
@@ -821,34 +833,34 @@ class LiDARApp:
                     # Управление мышью - восстановленная логика
                     if (self.mouse_controller and self.mouse_controller.is_active and 
                         frame_touch_points):
-                    
+                
                         # Берем первую точку для движения мыши
                         primary_touch = frame_touch_points[0]
-                    
+                
                         # Создаем ключ для отслеживания
                         touch_key = (round(primary_touch.angle, 1), round(primary_touch.distance, -1))
                         current_touch_keys = {touch_key}
-                    
+                
                         # Перемещаем мышь сразу
                         try:
                             self.mouse_controller.move_mouse_to_touch(primary_touch)
                         except:
                             pass
-                    
+                
                         # Проверяем начало нового касания
                         if touch_key not in tracked_touches:
                             tracked_touches[touch_key] = {
                                 'point': primary_touch,
                                 'start_time': time.time()
                             }
+                
+                   
                     
-                       
-                        
                     elif self.mouse_controller and self.mouse_controller.is_active:
                         # Нет касания - проверяем завершение существующих касаний
                         current_touch_keys = set()
                         finished_touches = set(tracked_touches.keys()) - current_touch_keys
-                    
+                
                         for finished_key in finished_touches:
                             touch_info = tracked_touches[finished_key]
                             # Проверяем минимальную длительность касания
@@ -856,7 +868,7 @@ class LiDARApp:
                                 # Выполняем клик при отпускании касания
                                 if time.time() - last_click_time >= click_delay:
                                     try:
-                                     # Используем позицию последнего известного касания
+                                    # Используем позицию последнего известного касания
                                         if 'point' in touch_info:
                                             screen_coords = self.mouse_controller.map_touch_to_screen(touch_info['point'])
                                             if screen_coords:
@@ -873,8 +885,8 @@ class LiDARApp:
                     if scan_counter % 100 == 0:
                         self.log_message(f"FPS: {1/(time.time()-last_update_time):.0f} | Touches: {len(frame_touch_points)} | Angle: {first_point_angle:.2f}°")
 
-                # Минимальная задержка
-                time.sleep(0.001)
+                # Задержка
+                time.sleep(0.02)
 
         except Exception as e:
             self.log_message(f"❌ Detection error: {e}")
@@ -885,6 +897,7 @@ class LiDARApp:
 
             if self.mouse_controller:
                 self.mouse_controller.disable_control()
+
 
 
 

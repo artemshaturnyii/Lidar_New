@@ -1,10 +1,10 @@
 {
-  "timestamp": 1775390253.0198567,
+  "timestamp": 1775392485.63953,
   "corners": [
     {
       "name": "bottom_left",
-      "angle": 358.81636363636363,
-      "distance": 968.0,
+      "angle": 355.87,
+      "distance": 973.0,
       "angle_std": 0.0,
       "distance_std": 0.0,
       "sample_count": 1,
@@ -12,8 +12,8 @@
     },
     {
       "name": "bottom_right",
-      "angle": 28.64090909090909,
-      "distance": 1124.0,
+      "angle": 25.69090909090909,
+      "distance": 1095.0,
       "angle_std": 0.0,
       "distance_std": 0.0,
       "sample_count": 1,
@@ -21,8 +21,8 @@
     },
     {
       "name": "top_right",
-      "angle": 21.19818181818182,
-      "distance": 1417.0,
+      "angle": 19.47,
+      "distance": 1396.0,
       "angle_std": 0.0,
       "distance_std": 0.0,
       "sample_count": 1,
@@ -30,8 +30,8 @@
     },
     {
       "name": "top_left",
-      "angle": 359.42,
-      "distance": 1298.0,
+      "angle": 356.45363636363635,
+      "distance": 1314.0,
       "angle_std": 0.0,
       "distance_std": 0.0,
       "sample_count": 1,
