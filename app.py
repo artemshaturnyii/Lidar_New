@@ -94,152 +94,195 @@ class LiDARApp:
         # Configure grid weights for resizing
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
-    
+
         # Main frame
         main_frame = ttk.Frame(self.root)
         main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         main_frame.grid_rowconfigure(0, weight=1)
         main_frame.grid_columnconfigure(0, weight=3)
         main_frame.grid_columnconfigure(1, weight=1)
-    
+
         # Plot frame (left side)
         plot_frame = ttk.LabelFrame(main_frame, text="LiDAR Real-time View")
         plot_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         plot_frame.grid_rowconfigure(0, weight=1)
         plot_frame.grid_columnconfigure(0, weight=1)
-    
+
         # Create matplotlib figure and axis
         self.fig = Figure(figsize=(8, 8), dpi=100)
         self.ax = self.fig.add_subplot(111, projection='polar')
         self.ax.set_theta_zero_location('N')
         self.ax.set_theta_direction(-1)
         self.ax.set_title("LiDAR Scan (Polar Coordinates)")
-    
+
         # Create canvas for matplotlib plot
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-    
+
         # Control panel (right side)
         control_frame = ttk.LabelFrame(main_frame, text="Control Panel")
         control_frame.grid(row=0, column=1, sticky="nsew")
         control_frame.grid_columnconfigure(0, weight=1)
-    
+
         # Status indicators
         status_frame = ttk.LabelFrame(control_frame, text="Status")
         status_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
         status_frame.grid_columnconfigure(1, weight=1)
-    
+
         ttk.Label(status_frame, text="LiDAR:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
         self.lidar_status = ttk.Label(status_frame, text="Connecting...", foreground="orange")
         self.lidar_status.grid(row=0, column=1, sticky="w", padx=5, pady=2)
-    
+
         ttk.Label(status_frame, text="Background:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
         self.bg_status = ttk.Label(status_frame, text="Not Created", foreground="red")
         self.bg_status.grid(row=1, column=1, sticky="w", padx=5, pady=2)
-    
+
         ttk.Label(status_frame, text="Noise Profile:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
         self.noise_status = ttk.Label(status_frame, text="Not Profiled", foreground="red")
         self.noise_status.grid(row=2, column=1, sticky="w", padx=5, pady=2)
-    
+
         ttk.Label(status_frame, text="Corners:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
         self.corners_status = ttk.Label(status_frame, text="Not Calibrated", foreground="red")
         self.corners_status.grid(row=3, column=1, sticky="w", padx=5, pady=2)
-    
+
         ttk.Label(status_frame, text="Mouse Control:").grid(row=4, column=0, sticky="w", padx=5, pady=2)
         self.mouse_status = ttk.Label(status_frame, text="Not Initialized", foreground="red")
         self.mouse_status.grid(row=4, column=1, sticky="w", padx=5, pady=2)
-    
+
         # Calibration buttons
         calib_frame = ttk.LabelFrame(control_frame, text="Calibration")
         calib_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=5)
         calib_frame.grid_columnconfigure(0, weight=1)
-    
+
         self.bg_button = ttk.Button(calib_frame, text="Create Background Map", 
                                command=self.create_background_map)
         self.bg_button.grid(row=0, column=0, sticky="ew", padx=5, pady=2)
-    
+
         self.noise_button = ttk.Button(calib_frame, text="Profile Noise", 
-                                  command=self.profile_noise)
+                              command=self.profile_noise)
         self.noise_button.grid(row=1, column=0, sticky="ew", padx=5, pady=2)
-    
+
         # Corner calibration buttons
         corner_frame = ttk.LabelFrame(calib_frame, text="Corner Calibration")
         corner_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         corner_frame.grid_columnconfigure(0, weight=1)
         corner_frame.grid_columnconfigure(1, weight=1)
-    
+
         self.top_left_button = ttk.Button(corner_frame, text="Top Left", 
-                                     command=lambda: self.calibrate_corner("top_left"))
+                                 command=lambda: self.calibrate_corner("top_left"))
         self.top_left_button.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-    
+
         self.top_right_button = ttk.Button(corner_frame, text="Top Right", 
-                                      command=lambda: self.calibrate_corner("top_right"))
+                                  command=lambda: self.calibrate_corner("top_right"))
         self.top_right_button.grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-    
+
         self.bottom_left_button = ttk.Button(corner_frame, text="Bottom Left", 
-                                        command=lambda: self.calibrate_corner("bottom_left"))
+                                    command=lambda: self.calibrate_corner("bottom_left"))
         self.bottom_left_button.grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-    
+
         self.bottom_right_button = ttk.Button(corner_frame, text="Bottom Right", 
-                                         command=lambda: self.calibrate_corner("bottom_right"))
+                                     command=lambda: self.calibrate_corner("bottom_right"))
         self.bottom_right_button.grid(row=1, column=1, sticky="ew", padx=2, pady=2)
-    
+
         self.all_corners_button = ttk.Button(calib_frame, text="Calibrate All Corners", 
-                                        command=self.calibrate_all_corners)
+                                    command=self.calibrate_all_corners)
         self.all_corners_button.grid(row=3, column=0, sticky="ew", padx=5, pady=2)
-    
-        # Mouse control buttons
+
+        # Mouse control buttons (объединенные в одну toggle-кнопку)
         if MOUSE_CONTROL_AVAILABLE:
             mouse_frame = ttk.LabelFrame(control_frame, text="Mouse Control")
             mouse_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=5)
             mouse_frame.grid_columnconfigure(0, weight=1)
-            mouse_frame.grid_columnconfigure(1, weight=1)
         
-            self.mouse_enable_button = ttk.Button(mouse_frame, text="Enable Mouse", 
-                                                 command=self.enable_mouse_control)
-            self.mouse_enable_button.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+            # Toggle кнопка для управления мышью
+            self.toggle_mouse_button = ttk.Button(mouse_frame, text="Start Mouse Control", 
+                                            command=self.toggle_mouse_control)
+            self.toggle_mouse_button.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
         
-            self.mouse_disable_button = ttk.Button(mouse_frame, text="Disable Mouse", 
-                                              command=self.disable_mouse_control, 
-                                              state="disabled")
-            self.mouse_disable_button.grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-    
+            # Статус работы мыши
+            self.mouse_status_label = ttk.Label(mouse_frame, text="Stopped", foreground="red")
+            self.mouse_status_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
+
         # Countdown label for corner calibration
         self.countdown_label = ttk.Label(calib_frame, text="", foreground="red")
         self.countdown_label.grid(row=4, column=0, pady=5)
-    
-        # Control buttons
-        button_frame = ttk.Frame(control_frame)
-        button_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=5)
-        button_frame.grid_columnconfigure(0, weight=1)
-        button_frame.grid_columnconfigure(1, weight=1)
-    
-        self.start_button = ttk.Button(button_frame, text="Start Detection", 
-                                  command=self.start_detection)
-        self.start_button.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-    
-        self.stop_button = ttk.Button(button_frame, text="Stop Detection", 
-                                 command=self.stop_detection, state="disabled")
-        self.stop_button.grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-    
+
+        # Quit button (остальные кнопки управления убраны)
         self.quit_button = ttk.Button(control_frame, text="Quit", command=self.quit_app)
         self.quit_button.grid(row=6, column=0, sticky="ew", padx=10, pady=5)
-    
+
         # Log area
         log_frame = ttk.LabelFrame(self.root, text="Log")
         log_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
         log_frame.grid_rowconfigure(0, weight=1)
         log_frame.grid_columnconfigure(0, weight=1)
-    
+
         self.log_text = tk.Text(log_frame, height=8)
         self.log_text.grid(row=0, column=0, sticky="nsew")
-    
+
         scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=scrollbar.set)
 
         # Инициализируем пустой график один раз
         self.update_plot()
+
+    def toggle_mouse_control(self):
+        """Toggle mouse control on/off"""
+        if not self.running:
+            self.start_mouse_control()
+        else:
+            self.stop_mouse_control()
+
+    def start_mouse_control(self):
+        """Start both detection and mouse control together"""
+        # Проверяем готовность системы
+        if not self.check_system_readiness():
+            self.log_message("⚠️  System not ready for detection")
+            return
+            
+        # Включаем обнаружение
+        self.running = True
+        self.log_message("🔄 Starting real-time detection...")
+        
+        # Включаем управление мышью
+        if self.mouse_controller:
+            try:
+                self.mouse_controller.enable_control()
+                self.mouse_status_label.config(text="Running", foreground="green")
+                self.toggle_mouse_button.config(text="Stop Mouse Control")
+                self.log_message("🖱️  Mouse control enabled")
+            except Exception as e:
+                self.log_message(f"❌ Error enabling mouse control: {e}")
+                self.running = False
+                return
+        else:
+            self.log_message("⚠️  Mouse controller not initialized")
+            self.running = False
+            return
+        
+        self.log_message("🎮 Mouse control started - system is ready!")
+
+        # Start detection in a separate thread
+        self.lidar_thread = threading.Thread(target=self.run_detection, daemon=True)
+        self.lidar_thread.start()
+
+    def stop_mouse_control(self):
+        """Stop both detection and mouse control"""
+        # Останавливаем обнаружение
+        self.running = False
+        
+        # Отключаем управление мышью
+        if self.mouse_controller and self.mouse_controller.is_active:
+            try:
+                self.mouse_controller.disable_control()
+                self.mouse_status_label.config(text="Stopped", foreground="red")
+                self.log_message("🖱️  Mouse control disabled")
+            except Exception as e:
+                self.log_message(f"❌ Error disabling mouse control: {e}")
+        
+        self.toggle_mouse_button.config(text="Start Mouse Control")
+        self.log_message("⏹️ Mouse control stopped")
 
     def init_lidar_async(self):
         """Initialize LiDAR in a separate thread"""
@@ -284,7 +327,6 @@ class LiDARApp:
                 self.log_message(f"❌ LiDAR connection error: {e}")
 
         threading.Thread(target=init, daemon=True).start()
-
 
     def load_existing_data(self):
         """Load existing background map and corners if available"""
@@ -333,7 +375,6 @@ class LiDARApp:
         if loaded_anything:
             self.check_system_readiness()
             self.update_plot()  # Обновляем график с загруженными данными
-
 
     def check_system_readiness(self):
         """Проверяет общую готовность системы и обновляет статус"""
@@ -444,7 +485,7 @@ class LiDARApp:
         if not self.lidar or not self.detector or not self.noise_filter:
             self.log_message("⚠️  LiDAR, detector, or noise filter not ready")
             return
-        
+
         def calibrate():
             try:
                 self.log_message(f"⏳ Preparing to calibrate {corner_name} corner...")
@@ -515,7 +556,7 @@ class LiDARApp:
         
         def calibrate_all():
             try:
-                self.log_message("⏳ Preparing to calibrate all corners...")
+                self.log_message("⏳ Preparing to calibrate all corners. Start with TOP RIGHT corner")
                 self.log_message("Please move to the first calibration position within 5 seconds...")
             
                 # Disable all corner buttons
@@ -819,7 +860,7 @@ class LiDARApp:
                         self.log_message(f"FPS: {1/(time.time()-last_update_time):.0f} | Touches: {len(frame_touch_points)} | Angle: {first_point_angle:.2f}°")
 
                 # Задержка
-                time.sleep(0.02)
+                time.sleep(0.05)
 
         except Exception as e:
             self.log_message(f"❌ Detection error: {e}")
