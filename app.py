@@ -94,13 +94,14 @@ class LiDARApp:
         # Configure grid weights for resizing
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(1, weight=0)  # Логи не растягиваются
 
         # Main frame
         main_frame = ttk.Frame(self.root)
         main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         main_frame.grid_rowconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(0, weight=3)
-        main_frame.grid_columnconfigure(1, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=0)  # Правая панель не растягивается
 
         # Plot frame (left side)
         plot_frame = ttk.LabelFrame(main_frame, text="LiDAR Real-time View")
@@ -119,7 +120,7 @@ class LiDARApp:
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
-        # Control panel (right side)
+        # Control panel (right side) - фиксированная ширина
         control_frame = ttk.LabelFrame(main_frame, text="Control Panel")
         control_frame.grid(row=0, column=1, sticky="nsew")
         control_frame.grid_columnconfigure(0, weight=1)
@@ -155,7 +156,7 @@ class LiDARApp:
         calib_frame.grid_columnconfigure(0, weight=1)
 
         self.bg_button = ttk.Button(calib_frame, text="Create Background Map", 
-                               command=self.create_background_map)
+                           command=self.create_background_map)
         self.bg_button.grid(row=0, column=0, sticky="ew", padx=5, pady=2)
 
         self.noise_button = ttk.Button(calib_frame, text="Profile Noise", 
@@ -193,12 +194,12 @@ class LiDARApp:
             mouse_frame = ttk.LabelFrame(control_frame, text="Mouse Control")
             mouse_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=5)
             mouse_frame.grid_columnconfigure(0, weight=1)
-        
+    
             # Toggle кнопка для управления мышью
             self.toggle_mouse_button = ttk.Button(mouse_frame, text="Start Mouse Control", 
-                                            command=self.toggle_mouse_control)
+                                        command=self.toggle_mouse_control)
             self.toggle_mouse_button.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        
+    
             # Статус работы мыши
             self.mouse_status_label = ttk.Label(mouse_frame, text="Stopped", foreground="red")
             self.mouse_status_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
@@ -211,21 +212,20 @@ class LiDARApp:
         self.quit_button = ttk.Button(control_frame, text="Quit", command=self.quit_app)
         self.quit_button.grid(row=6, column=0, sticky="ew", padx=10, pady=5)
 
-        # Log area
+        # Log area - фиксированная высота
         log_frame = ttk.LabelFrame(self.root, text="Log")
-        log_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        log_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         log_frame.grid_rowconfigure(0, weight=1)
         log_frame.grid_columnconfigure(0, weight=1)
+        log_frame.grid_columnconfigure(1, weight=0)
 
-        self.log_text = tk.Text(log_frame, height=8)
-        self.log_text.grid(row=0, column=0, sticky="nsew")
+        self.log_text = tk.Text(log_frame, height=6)  # Фиксированная высота
+        self.log_text.grid(row=0, column=0, sticky="ew")
 
         scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=scrollbar.set)
 
-        # Инициализируем пустой график один раз
-        self.update_plot()
 
     def toggle_mouse_control(self):
         """Toggle mouse control on/off"""
