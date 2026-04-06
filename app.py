@@ -72,16 +72,20 @@ class LiDARApp:
                 data = self.plot_queue.get(timeout=0.01)
                 if data is None:
                     break
-                scan, touch_tuple = data
-                self.update_plot()  # Обновляем только статичный график
+                scan, touch_points = data  # Исправляем переменную
+                self.update_plot(scan, touch_points)  # Передаем оба параметра
             except queue.Empty:
                 pass
 
     def update_plot_fast(self, scan=None, touch_points=None):
-        """Быстрое обновление графика через очередь"""
         try:
-            # Просто отправляем сигнал на обновление графика без данных
-            self.plot_queue.put((None, None), block=False)
+            # Очищаем очередь перед добавлением новых данных
+            while not self.plot_queue.empty():
+                try:
+                    self.plot_queue.get_nowait()
+                except queue.Empty:
+                    break
+            self.plot_queue.put((scan, touch_points), block=False)
         except:
             pass
 
@@ -804,8 +808,13 @@ class LiDARApp:
                     else:
                         frame_touch_points = real_touch_points[:3]
 
-                    # Не обновляем график во время сканирования
-                    
+                    # Обновляем график с точками касания внутри углов
+                    current_time = time.time()
+                    if current_time - last_update_time > 0.005:
+                        self.update_plot_fast(None, frame_touch_points)
+                        last_update_time = current_time
+
+                                            
                     # Управление мышью - восстановленная логика
                     if (self.mouse_controller and self.mouse_controller.is_active and 
                         frame_touch_points):
@@ -872,8 +881,8 @@ class LiDARApp:
             if self.mouse_controller:
                 self.mouse_controller.disable_control()
 
-    def update_plot(self, scan=None):
-        """Update the matplotlib plot with static data only (no real-time points)"""
+    def update_plot(self, scan=None, touch_points=None):
+        """Update the matplotlib plot with new scan data"""
         try:
             # Clear the axis
             self.ax.clear()
@@ -889,14 +898,28 @@ class LiDARApp:
                 distances = list(self.background_map.values())
                 self.ax.plot(np.radians(angles), distances, 'b-', linewidth=1, label='Background')
     
+            # Plot current scan data if provided
+            if scan:
+                angles = [point.angle for point in scan]
+                distances = [point.distance for point in scan]
+                # Plot all scan points in blue
+                self.ax.scatter(np.radians(angles), distances, c='blue', s=10, alpha=0.6, label='Scan Points')
+    
+            # Plot touch points if provided (только точки внутри углов)
+            if touch_points and len(touch_points) > 0:
+                touch_angles = [point.angle for point in touch_points]
+                touch_distances = [point.distance for point in touch_points]
+                self.ax.scatter(np.radians(touch_angles), touch_distances, 
+                        c='red', s=50, alpha=0.9, marker='o', label='Touch Points')
+    
             # Plot corners if available
             if self.corners:
                 corner_angles = [corner['angle'] for corner in self.corners]
                 corner_distances = [corner['distance'] for corner in self.corners]
                 # Отображаем углы без подписей
                 self.ax.scatter(np.radians(corner_angles), corner_distances, 
-                            c='orange', s=100, alpha=0.9, marker='s', 
-                            label='Projection Corners', edgecolors='black', linewidth=2)
+                        c='orange', s=100, alpha=0.9, marker='s', 
+                        label='Projection Corners', edgecolors='black', linewidth=2)
     
             # Add legend
             self.ax.legend()
@@ -906,6 +929,9 @@ class LiDARApp:
     
         except Exception as e:
             self.log_message(f"Plot update error: {e}")
+
+
+
 
     def point_in_polygon_fast(self, point: Point, polygon_corners: List[dict]) -> bool:
         """Проверка точки внутри прямоугольной рамки в декартовых координатах"""
