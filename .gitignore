@@ -362,6 +362,19 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# Local Files
-*.json
-*.npz
+# Local generated data files
+background.npz
+noise_profile.json
+persistent_noise_points.json
+projection_corners.json
+orientation_config.json
+north_calibration.json
+
+# Python virtual environment
+env/
+Lib/
+
+# Qwen chat / context
+.qwen/
+qwen_chat.txt
+QWEN.md

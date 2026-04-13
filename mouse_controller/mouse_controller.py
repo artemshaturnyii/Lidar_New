@@ -1,55 +1,105 @@
 """
-Модуль для управления курсором мыши на основе данных LiDAR
+Модуль для управления курсором мыши на основе данных LiDAR.
+Кроссплатформенный: Win32 API (Windows) / Xlib (Linux).
 """
 
-import pyautogui
+import platform
 import numpy as np
 from typing import List, Optional, Tuple
 from lidar_sdk import Point
 import time
 
+
+# ─── Платформо-зависимые операции ──────────────────────────────────────
+
+_SYSTEM = platform.system()
+
+if _SYSTEM == "Windows":
+    import ctypes
+    _user32 = ctypes.windll.user32
+
+    def _get_screen_size() -> Tuple[int, int]:
+        return (_user32.GetSystemMetrics(0), _user32.GetSystemMetrics(1))
+
+    def _set_cursor_pos(x: int, y: int) -> None:
+        _user32.SetCursorPos(x, y)
+
+    def _mouse_down() -> None:
+        _user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+
+    def _mouse_up() -> None:
+        _user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+
+elif _SYSTEM == "Linux":
+    from Xlib import display, X
+    from Xlib.ext.xtest import fake_input
+
+    _dpy = display.Display()
+    _root = _dpy.screen().root
+
+    def _get_screen_size() -> Tuple[int, int]:
+        return (_root.get_geometry().width, _root.get_geometry().height)
+
+    def _set_cursor_pos(x: int, y: int) -> None:
+        _root.warp_pointer(x, y)
+        _dpy.sync()
+
+    def _mouse_down() -> None:
+        fake_input(_dpy, X.ButtonPress, 1)
+        _dpy.sync()
+
+    def _mouse_up() -> None:
+        fake_input(_dpy, X.ButtonRelease, 1)
+        _dpy.sync()
+
+else:
+    raise RuntimeError(f"Неподдерживаемая ОС: {_SYSTEM}")
+
+
 class MouseController:
-    """Контроллер для управления курсором мыши на основе касаний LiDAR"""
-    
+    """Контроллер для управления курсором мыши на основе касаний LiDAR.
+    Мгновенное перемещение через Win32 SetCursorPos (Win) или Xlib warp_pointer (Linux).
+    """
+
     def __init__(self, screen_width: int = None, screen_height: int = None):
-        """
-        Инициализация контроллера мыши
-        """
-        # Отключаем защитные механизмы для скорости
-        pyautogui.FAILSAFE = False
-        pyautogui.PAUSE = 0
-        
-        # Получаем размеры экрана если не заданы
+        """Инициализация контроллера мыши"""
         if screen_width is None or screen_height is None:
-            screen_size = pyautogui.size()
-            self.screen_width = screen_width or screen_size.width
-            self.screen_height = screen_height or screen_size.height
+            self.screen_width, self.screen_height = _get_screen_size()
         else:
             self.screen_width = screen_width
             self.screen_height = screen_height
-            
+
         self.corners = None
         self.is_active = False
         self.last_mouse_position = None
         self.lidar_corners = None
         self.screen_corners = None
         self.lidar_bbox = None
-        
+
         # Направление севера
         self.north_angle = 0.0
-        
+
         # Параметры кликов
         self.click_delay = 0.3
         self.last_click_time = 0
-        
+
         # Отслеживание состояния касаний
         self.current_touch_state = False
         self.touch_start_time = 0
-        
-        # Для стабилизации позиции
-        self.position_buffer = []
-        self.buffer_size = 2
-    
+
+        # Мёртвая зона — курсор двигается только если смещение > dead_zone_radius px
+        self.dead_zone_radius = 100  # пиксели экрана
+
+        # Зафиксированная позиция курсора в пределах мёртвой зоны
+        self._anchor_screen_x: Optional[int] = None
+        self._anchor_screen_y: Optional[int] = None
+
+        # Гомография для перспективного преобразования (4 угла → экран)
+        self._homography: Optional[np.ndarray] = None
+
+        # Предвычисленные константы для map_touch_to_screen
+        self._precomputed = {}
+
     def set_projection_corners(self, corners: List[dict]):
         """Установка углов проекции для калибровки"""
         if corners and len(corners) >= 4:
@@ -62,180 +112,214 @@ class MouseController:
             self.lidar_corners = None
             self.screen_corners = None
             self.lidar_bbox = None
-            
+            self._precomputed = {}
+
     def _setup_corner_mapping(self):
-        """Настраивает соответствие углов LiDAR и экрана"""
+        """Настраивает соответствие углов LiDAR и экрана с гомографией."""
         if not self.corners or len(self.corners) < 4:
             return
-            
-        # Преобразуем углы LiDAR в декартовы координаты (правильная система координат)
+
+        corner_map = {c['name']: c for c in self.corners}
+
         def polar_to_cartesian(angle_deg, distance):
-            # Корректируем угол относительно севера
             corrected_angle = (angle_deg - self.north_angle) % 360
             angle_rad = np.radians(corrected_angle)
-            # В лидаре: X вправо, Y вперед (как в математике)
-            x = distance * np.sin(angle_rad)  # Положительный X вправо
-            y = distance * np.cos(angle_rad)  # Положительный Y вперед
+            x = distance * np.sin(angle_rad)
+            y = distance * np.cos(angle_rad)
             return x, y
-        
-        # Преобразуем углы проекции в декартовы координаты
-        self.lidar_corners = [polar_to_cartesian(corner['angle'], corner['distance']) 
-                             for corner in self.corners[:4]]
-        
-        # Вычисляем ограничивающий прямоугольник
-        if self.lidar_corners:
-            x_coords = [p[0] for p in self.lidar_corners]
-            y_coords = [p[1] for p in self.lidar_corners]
-            self.lidar_bbox = {
-                'min_x': min(x_coords),
-                'max_x': max(x_coords),
-                'min_y': min(y_coords),
-                'max_y': max(y_coords)
-            }
-        
-        print("📏 Соответствие углов установлено")
+
+        lidar_pts = []
+        screen_pts = [
+            (0, 0),
+            (self.screen_width - 1, 0),
+            (self.screen_width - 1, self.screen_height - 1),
+            (0, self.screen_height - 1),
+        ]
+
+        corner_order = ['top_left', 'top_right', 'bottom_right', 'bottom_left']
+        for name in corner_order:
+            if name in corner_map:
+                c = corner_map[name]
+                lidar_pts.append(polar_to_cartesian(c['angle'], c['distance']))
+
+        if len(lidar_pts) < 4:
+            print("⚠️  Не все углы найдены — используем упрощённую проекцию")
+            self._compute_bbox_fallback(lidar_pts)
+            return
+
+        src = np.array(lidar_pts, dtype=np.float64)
+        dst = np.array(screen_pts, dtype=np.float64)
+        self._homography = self._compute_homography(src, dst)
+
+        x_coords = [p[0] for p in lidar_pts]
+        y_coords = [p[1] for p in lidar_pts]
+        self.lidar_bbox = {
+            'min_x': min(x_coords), 'max_x': max(x_coords),
+            'min_y': min(y_coords), 'max_y': max(y_coords),
+        }
+
+        self._precomputed['screen_max_x'] = float(self.screen_width - 1)
+        self._precomputed['screen_max_y'] = float(self.screen_height - 1)
+
+        print("📏 Гомография вычислена, соответствие углов установлено")
+
+    def _compute_bbox_fallback(self, lidar_pts):
+        """Fallback если не все углы найдены — простая проекция."""
+        if not lidar_pts:
+            return
+        x_coords = [p[0] for p in lidar_pts]
+        y_coords = [p[1] for p in lidar_pts]
+        self.lidar_bbox = {
+            'min_x': min(x_coords), 'max_x': max(x_coords),
+            'min_y': min(y_coords), 'max_y': max(y_coords),
+        }
+        self._precomputed['screen_max_x'] = float(self.screen_width - 1)
+        self._precomputed['screen_max_y'] = float(self.screen_height - 1)
+
+    @staticmethod
+    def _compute_homography(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+        """
+        Вычисляет матрицу гомографии 3x3 без OpenCV.
+        src: (4, 2) — точки источника (LiDAR в мм)
+        dst: (4, 2) — точки назначения (экран в px)
+        """
+        A = []
+        for i in range(4):
+            sx, sy = src[i]
+            dx, dy = dst[i]
+            A.append([sx, sy, 1,  0,  0, 0,  -dx*sx, -dx*sy, -dx])
+            A.append([ 0,  0, 0,  sx, sy, 1,  -dy*sx, -dy*sy, -dy])
+        A = np.array(A, dtype=np.float64)
+
+        _, _, vh = np.linalg.svd(A)
+        h = vh[-1]
+        H = h.reshape(3, 3) / h[-1]
+        return H
 
     def map_touch_to_screen(self, touch_point: Point) -> Optional[Tuple[int, int]]:
-        """Преобразует точку касания LiDAR в координаты экрана"""
-        if not self.corners or not self.lidar_corners or not self.lidar_bbox:
+        """Преобразует точку касания LiDAR в координаты экрана.
+        Использует гомографию если доступна, иначе — билинейную проекцию.
+        """
+        if not self._precomputed:
             return None
-            
-        # Преобразуем точку касания в декартовы координаты
-        def polar_to_cartesian(angle_deg, distance):
-            corrected_angle = (angle_deg - self.north_angle) % 360
-            angle_rad = np.radians(corrected_angle)
-            x = distance * np.sin(angle_rad)  # Положительный X вправо
-            y = distance * np.cos(angle_rad)  # Положительный Y вперед
-            return x, y
-        
-        touch_x, touch_y = polar_to_cartesian(touch_point.angle, touch_point.distance)
-        
-        # Проверяем, находится ли точка в пределах проекции
-        if not (self.lidar_bbox['min_x'] <= touch_x <= self.lidar_bbox['max_x'] and 
-                self.lidar_bbox['min_y'] <= touch_y <= self.lidar_bbox['max_y']):
+
+        corrected_angle = np.radians(touch_point.angle) - self._precomputed.get('north_rad', 0)
+        lx = touch_point.distance * np.sin(corrected_angle)
+        ly = touch_point.distance * np.cos(corrected_angle)
+
+        bbox = self.lidar_bbox
+        if bbox and not (bbox['min_x'] <= lx <= bbox['max_x'] and bbox['min_y'] <= ly <= bbox['max_y']):
             return None
-        
-        # Нормализуем координаты в диапазон 0-1
-        try:
-            lidar_width = self.lidar_bbox['max_x'] - self.lidar_bbox['min_x']
-            lidar_height = self.lidar_bbox['max_y'] - self.lidar_bbox['min_y']
-            
-            if lidar_width == 0 or lidar_height == 0:
+
+        if self._homography is not None:
+            H = self._homography
+            w = H[2, 0] * lx + H[2, 1] * ly + H[2, 2]
+            if abs(w) < 1e-10:
                 return None
-                
-            norm_x = (touch_x - self.lidar_bbox['min_x']) / lidar_width
-            norm_y = (touch_y - self.lidar_bbox['min_y']) / lidar_height
-        except ZeroDivisionError:
-            return None
-        
-        # Преобразуем в координаты экрана
-        # Экран: (0,0) в левом верхнем углу, X вправо, Y вниз
-        screen_x = norm_x * (self.screen_width - 1)
-        screen_y = (1.0 - norm_y) * (self.screen_height - 1)  # Инвертируем Y для экрана
-        
-        # Ограничиваем границами экрана
-        screen_x = max(0, min(self.screen_width - 1, screen_x))
-        screen_y = max(0, min(self.screen_height - 1, screen_y))
-        
-        return (int(screen_x), int(screen_y))
-    
+            sx = (H[0, 0] * lx + H[0, 1] * ly + H[0, 2]) / w
+            sy = (H[1, 0] * lx + H[1, 1] * ly + H[1, 2]) / w
+        else:
+            dx = lx - bbox['min_x']
+            dy = ly - bbox['min_y']
+            w = bbox['max_x'] - bbox['min_x']
+            h = bbox['max_y'] - bbox['min_y']
+            if w == 0 or h == 0:
+                return None
+            sx = (dx / w) * self._precomputed['screen_max_x']
+            sy = (1.0 - dy / h) * self._precomputed['screen_max_y']
+
+        sx = max(0.0, min(self._precomputed['screen_max_x'], sx))
+        sy = max(0.0, min(self._precomputed['screen_max_y'], sy))
+
+        return (int(sx), int(sy))
+
     def move_mouse_to_touch(self, touch_point: Point) -> bool:
-        """
-        Перемещение курсора мыши в позицию касания
-        """
+        """Мгновенное перемещение курсора в позицию касания с мёртвой зоной."""
         if not self.is_active:
             return False
-            
+
         screen_coords = self.map_touch_to_screen(touch_point)
-        
         if screen_coords is None:
             return False
-            
+
         x, y = screen_coords
-        
-        # Добавляем позицию в буфер для сглаживания
-        self.position_buffer.append((x, y))
-        if len(self.position_buffer) > self.buffer_size:
-            self.position_buffer.pop(0)
-        
-        # Используем усредненную позицию для стабильности
-        if len(self.position_buffer) > 1:
-            avg_x = sum(pos[0] for pos in self.position_buffer) / len(self.position_buffer)
-            avg_y = sum(pos[1] for pos in self.position_buffer) / len(self.position_buffer)
-            x, y = int(avg_x), int(avg_y)
-        
-        try:
-            pyautogui.moveTo(x, y)
+
+        if self._anchor_screen_x is None:
+            self._anchor_screen_x = x
+            self._anchor_screen_y = y
+            _set_cursor_pos(x, y)
             self.last_mouse_position = (x, y)
             return True
-        except Exception as e:
-            print(f"❌ Ошибка перемещения мыши: {e}")
-            return False
-    
-    def update_touch_state(self, has_touch: bool, touch_point: Point = None) -> bool:
+
+        dx = x - self._anchor_screen_x
+        dy = y - self._anchor_screen_y
+        distance = (dx * dx + dy * dy) ** 0.5
+
+        if distance > self.dead_zone_radius:
+            self._anchor_screen_x = x
+            self._anchor_screen_y = y
+            _set_cursor_pos(x, y)
+            self.last_mouse_position = (x, y)
+            return True
+
+        return False
+
+    def update_touch_state(self, has_touch: bool, touch_point: Point = None) -> None:
         """
-        Обновляет состояние касания и возвращает True если нужно выполнить клик
+        Обновляет состояние касания.
+        Новое касание → ЛКМ DOWN, продолжение → курсор двигается (drag),
+        отпускание → ЛКМ UP.
         """
-        current_time = time.time()
-        
         if has_touch and touch_point:
-            # Есть касание
             if not self.current_touch_state:
-                # Начало нового касания
+                # Начало нового касания — сбрасываем якорь + ЛКМ DOWN
+                self._anchor_screen_x = None
+                self._anchor_screen_y = None
                 self.current_touch_state = True
-                self.touch_start_time = current_time
-                # Очищаем буфер при новом касании
-                self.position_buffer = []
-                # Перемещаем мышь в позицию касания
                 self.move_mouse_to_touch(touch_point)
-                return False
+                _mouse_down()
             else:
-                # Продолжение касания - обновляем позицию мыши
+                # Продолжение касания — обновляем позицию (drag)
                 self.move_mouse_to_touch(touch_point)
-                return False
         else:
             # Нет касания
             if self.current_touch_state:
-                # Завершение касания - проверяем задержку
-                if current_time - self.touch_start_time >= 0.1:
-                    if current_time - self.last_click_time >= self.click_delay:
-                        self.current_touch_state = False
-                        self.last_click_time = current_time
-                        # Очищаем буфер
-                        self.position_buffer = []
-                        return True
+                # Отпускание — ЛКМ UP
+                _mouse_up()
                 self.current_touch_state = False
-        return False
-    
+                self._anchor_screen_x = None
+                self._anchor_screen_y = None
+
     def enable_control(self):
         """Включает управление мышью"""
         self.is_active = True
         self.current_touch_state = False
         self.last_mouse_position = None
         self.last_click_time = 0
-        self.position_buffer = []
+        self._anchor_screen_x = None
+        self._anchor_screen_y = None
         print("✅ Управление мышью включено")
-        
+
     def disable_control(self):
         """Выключает управление мышью"""
         self.is_active = False
         self.current_touch_state = False
         self.last_mouse_position = None
-        self.position_buffer = []
+        self._anchor_screen_x = None
+        self._anchor_screen_y = None
         print("🛑 Управление мышью выключено")
-        
+
     def set_click_delay(self, delay_seconds: float):
         """Устанавливает задержку после клика"""
         self.click_delay = max(0.1, delay_seconds)
         print(f"⏱️  Задержка после клика установлена: {self.click_delay}с")
 
+
 # Глобальный экземпляр контроллера
 mouse_controller = None
 
 def initialize_mouse_control(screen_width: int = None, screen_height: int = None):
-    """
-    Инициализация управления мыши
-    """
+    """Инициализация управления мыши"""
     global mouse_controller
     mouse_controller = MouseController(screen_width, screen_height)
     return mouse_controller

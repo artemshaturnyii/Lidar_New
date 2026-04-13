@@ -1,6 +1,7 @@
 import threading
 import time
 import struct
+import math
 from typing import List, Optional, Callable
 from .connection import LidarConnection
 from .protocol import PACKET_FMT, PACKET_SIZE, M1_HEADER, NODES_PER_PACK, crc8
@@ -16,7 +17,15 @@ class LidarM1:
         self._thread: Optional[threading.Thread] = None
         self._current_scan: List[Point] = []  # буфер текущего оборота
         self._last_scan: List[Point] = []     # последний завершённый скан
+        self._scan_counter: int = 0           # счётчик завершённых сканов
         self._last_angle: Optional[float] = None  # угол последней обработанной точки
+        
+        # Unwrapped tracking
+        self._unwrapped_angle: float = 0.0
+        self._sync_zone_min = -0.15
+        self._sync_zone_max = 0.15
+        self._in_sync_zone = True  # начальное состояние внутри зоны
+        
         self.lock = threading.Lock()
         self.on_scan_complete: Optional[Callable[[List[Point]], None]] = None
         self.on_point_received: Optional[Callable[[Point], None]] = None
@@ -135,9 +144,6 @@ class LidarM1:
         #print("Первые 10 байт:", ' '.join(f'{b:02X}' for b in data[:10]))
         return None
 
-
-
-
     def _process_packet(self, data):
         """Обрабатывает один пакет, разбирает точки и определяет завершение оборота."""
         parsed = self._parse_packet(data)
@@ -152,41 +158,113 @@ class LidarM1:
         else:
             step = (end_angle - start_angle) / (len(nodes) - 1)
 
+        # Проверяем адекватность шага (фильтр плохих пакетов)
+        if abs(step) > 5.0:  # слишком большой шаг — пропускаем
+            return
+
         # Обрабатываем каждую точку пакета
         for i, (dist, conf) in enumerate(nodes):
-            angle = (start_angle + step * i) % 360
+            raw_angle = start_angle + step * i
+            unwrapped_angle = self._unwrap_angle(raw_angle, self._unwrapped_angle)
+            angle = unwrapped_angle % 360
             pt = Point(angle=angle, distance=float(dist), intensity=float(conf))
 
             with self.lock:
-                # Более точная проверка завершения оборота
-                if self._last_angle is not None:
-                    angle_diff = (angle - self._last_angle) % 360
-                    # Если угол "проскочил" назад более чем на 300°, это начало нового оборота
-                    if angle_diff < -300 or angle_diff > 300:
-                        # Корректируем переход через 0°
-                        if angle_diff > 300:  # Переход от ~359° к ~1°
-                            angle_diff = angle_diff - 360
-                        elif angle_diff < -300:  # Переход от ~1° к ~359°
-                            angle_diff = angle_diff + 360
-                
-                    # Если угол действительно уменьшился значительно - начало нового оборота
-                    if angle < self._last_angle - 300:
-                        # Завершаем текущий оборот
-                        if self._current_scan:
-                            self._last_scan = self._current_scan.copy()
+                # Определение границы оборота через гистерезисную зону [-0.03°; +0.03°]
+                wrapped_angle = unwrapped_angle % 360
+                entering_sync_zone = (
+                    self._sync_zone_min <= wrapped_angle <= self._sync_zone_max
+                )
+
+                if not self._in_sync_zone and entering_sync_zone:
+                    # Пересечение границы: завершаем скан
+                    if len(self._current_scan) >= 25:  # минимальный скан для точности
+                        # Строгая проверка качества скана
+                        if self._validate_scan_quality(self._current_scan):
+                            normalized_scan = self._normalize_scan_start(self._current_scan)
+                            self._last_scan = normalized_scan
+                            self._scan_counter += 1
                             if self.on_scan_complete:
                                 self.on_scan_complete(self._last_scan)
-                        self._current_scan = []
+                    
+                    # Начинаем новый скан
+                    self._current_scan = [pt]
+                    self._in_sync_zone = True
+                else:
+                    self._current_scan.append(pt)
+                    if not entering_sync_zone:
+                        self._in_sync_zone = False
 
-                # Добавляем точку в текущий оборот
-                self._current_scan.append(pt)
+                self._unwrapped_angle = unwrapped_angle
                 self._last_angle = angle
 
                 if self.on_point_received:
                     self.on_point_received(pt)
 
+    def _unwrap_angle(self, new_angle: float, prev_unwrapped: float) -> float:
+        """Разворачивает угол в непрерывную ось."""
+        prev_wrapped = prev_unwrapped % 360
+        delta = new_angle - prev_wrapped
+        if delta > 180:
+            delta -= 360
+        elif delta < -180:
+            delta += 360
+        return prev_unwrapped + delta
+
+    def _validate_scan_quality(self, scan: List[Point]) -> bool:
+        """Строгая проверка качества скана для максимальной точности"""
+        if len(scan) < 25:
+            return False
+        
+        # Проверяем равномерность распределения точек
+        angles = [p.angle for p in scan]
+        angles.sort()
+        gaps = [angles[i+1] - angles[i] for i in range(len(angles)-1)]
+        max_gap = max(gaps) if gaps else 360
+        
+        # Максимальный допустимый разрыв между точками
+        return max_gap < 5.0  # Очень строгий критерий
+
+    def _calculate_coverage(self, scan: List[Point]) -> float:
+        """Вычисляет угловое покрытие скана в градусах."""
+        if not scan:
+            return 0.0
+        angles = sorted([p.angle for p in scan])
+        total = 0.0
+        for i in range(1, len(angles)):
+            diff = angles[i] - angles[i-1]
+            total += diff
+        # Добавляем замыкание круга
+        wrap_diff = (angles[0] + 360) - angles[-1]
+        total += wrap_diff
+        return total
+
+    def _find_max_gap(self, scan: List[Point]) -> float:
+        """Находит наибольший промежуток между соседними точками по углу."""
+        if len(scan) < 2:
+            return 0.0
+        angles = sorted([p.angle for p in scan])
+        gaps = []
+        for i in range(1, len(angles)):
+            gap = angles[i] - angles[i-1]
+            gaps.append(gap)
+        wrap_gap = (angles[0] + 360) - angles[-1]
+        gaps.append(wrap_gap)
+        return max(gaps)
+
+    def _normalize_scan_start(self, scan: List[Point]) -> List[Point]:
+        """Перемещает первую точку ближе всего к 0°."""
+        if not scan:
+            return scan
+        zero_idx = min(range(len(scan)), key=lambda i: abs(scan[i].angle))
+        return scan[zero_idx:] + scan[:zero_idx]
 
     def get_last_scan(self) -> List[Point]:
         """Возвращает последний завершённый скан (копию)."""
         with self.lock:
             return self._last_scan.copy()
+
+    def get_scan_counter(self) -> int:
+        """Возвращает номер последнего завершённого скана."""
+        with self.lock:
+            return self._scan_counter

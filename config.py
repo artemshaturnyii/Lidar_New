@@ -17,7 +17,7 @@ CALIBRATION_CONFIG = {
 # Параметры обработки данных
 PROCESSING_CONFIG = {
     'background_grid_step': 1.0,      # градусы
-    'angle_tolerance': 0.5,            # градусы для поиска точек
+    'angle_tolerance': 0.15,            # градусы для поиска точек
     'use_median_filter': True,         # использовать медиану вместо среднего
 }
 
@@ -30,21 +30,36 @@ DISPLAY_CONFIG = {
 
 # Параметры производительности
 PERFORMANCE_CONFIG = {
-    'target_fps': 60,
-    'max_touch_points': 5,
+    'target_fps': 120,               # Повышенная частота
+    'max_touch_points': 1,           # Только одна точка для точности
     'scan_point_limit': 50,
-    'update_interval': 0.016,  # 1/60 секунды
+    'update_interval': 0.01,        # 1/100 секунды
     'fast_mode': True,
 }
 
-# Параметры управления мышью
+# Параметры управления мышью - ОПТИМИЗИРОВАННЫЕ
 MOUSE_CONFIG = {
-    'stability_threshold': 5.0,      # Порог стабильности в пикселях
-    'min_stable_frames': 3,          # Минимум кадров для стабильности
-    'click_delay': 0.02,              # Задержка после клика в секундах
-    'position_smoothing': 0.3,       # Фактор сглаживания позиции (0.0-1.0)
-    'max_touch_points': 10,          # Максимум обрабатываемых точек касания
-    'touch_tracking_timeout': 2.0,   # Таймаут отслеживания касания в секундах
+    'stability_threshold': 2.0,       # БОЛЕЕ строгий порог стабильности
+    'min_stable_frames': 2,           # Меньше кадров для скорости
+    'click_delay': 0.01,              # Минимальная задержка клика
+    'position_smoothing': 0.1,        # МИНИМАЛЬНОЕ сглаживание для точности
+    'max_touch_points': 1,            # ТОЛЬКО одна точка касания
+    'touch_tracking_timeout': 0.5,    # БЫСТРЫЙ таймаут отслеживания
+    'touch_average_scans': 3,         # МИНИМУМ усреднений для скорости
+    'touch_lock_samples': 5,          # МЕНЬШЕ выборок для скорости
+    'touch_relock_samples': 5,        # БЫСТРАЯ смена lock
+    'touch_lock_radius_px': 100,      # МЕНЬШЕ мертвая зона
+    'touch_relock_confirm_frames': 2, # БЫСТРОЕ подтверждение смены
+    'touch_max_relock_step_px': 50,   # МЕНЬШЕ шаг lock
+    'touch_relock_proximity_px': 30,  # НОВЫЙ параметр - близость для перезахвата
+    'strict_static_touch_lock': False, # БОЛЕЕ отзывчивое позиционирование
+    'high_precision_mode': True,      # НОВЫЙ параметр для высокой точности
+    'prediction_factor': 0.3,         # НОВЫЙ параметр для предсказания движения (меньше для стабильности)
+    'jitter_filter_threshold': 3.0,   # НОВЫЙ параметр - фильтр дрожания
+    'movement_amplification': 1.0,    # НОВЫЙ параметр - усиление движения (1.0 = без усиления)
+    # Snap-to-grid параметры
+    'snap_grid_cell_size': 28,        # Размер ячейки сетки в пикселях (мёртвая зона ~25-30px)
+    'snap_enabled': True,             # Включить привязку к сетке
 }
 
 class Config:
