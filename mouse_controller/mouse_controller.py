@@ -88,7 +88,7 @@ class MouseController:
         self.touch_start_time = 0
 
         # Мёртвая зона — курсор двигается только если смещение > dead_zone_radius px
-        self.dead_zone_radius = 100  # пиксели экрана
+        self.dead_zone_radius = 50  # пиксели экрана
 
         # Зафиксированная позиция курсора в пределах мёртвой зоны
         self._anchor_screen_x: Optional[int] = None

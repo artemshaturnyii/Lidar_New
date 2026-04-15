@@ -33,31 +33,36 @@ class CornerCalibrator:
                 
         log(f"🎯 Начинаем калибровку угла: {corner_name}")
         log(f"Сбор {scan_count} сканов...")
-        
-        scan_collection = []  # Список сканов
-        scan_counter = 0
-        
-        # Собираем заданное количество сканов
-        while scan_counter < scan_count:
-            current_scan = lidar.get_last_scan()
-            if current_scan:
-                # Получаем точки касания
-                touch_points = detector.detect_touch_points(current_scan)
-                
-                # Фильтруем шум если фильтр доступен
-                if self.noise_filter:
-                    filtered_points = self.noise_filter.filter_touch_points(touch_points)
-                else:
-                    filtered_points = touch_points
-                
-                if filtered_points:
-                    scan_collection.append(filtered_points)
-                    scan_counter += 1
-                    log(f"  Собран скан {scan_counter}/{scan_count} для угла {corner_name}")
-                else:
-                    log(f"  Скан {scan_counter + 1}: нет касаний для угла {corner_name}")
-                    
-            time.sleep(0.1)
+
+        scan_collection = []  # Список отфильтрованных сканов
+
+        def on_scan(scan):
+            """Callback — вызывается при каждом завершённом скане."""
+            touch_points = detector.detect_touch_points(scan)
+
+            if self.noise_filter:
+                filtered_points = self.noise_filter.filter_touch_points(touch_points)
+            else:
+                filtered_points = touch_points
+
+            if filtered_points:
+                scan_collection.append(filtered_points)
+                log(f"  Собран скан {len(scan_collection)}/{scan_count} для угла {corner_name}")
+
+            if len(scan_collection) >= scan_count:
+                lidar.on_scan_complete = None
+
+        lidar.on_scan_complete = on_scan
+
+        # Ждём пока callback соберёт нужное количество сканов
+        timeout = time.time() + 60
+        while len(scan_collection) < scan_count and time.time() < timeout:
+            time.sleep(0.01)
+
+        # Отменяем callback если не собрали
+        if len(scan_collection) < scan_count:
+            lidar.on_scan_complete = None
+            log(f"⚠️  Собирали {len(scan_collection)}/{scan_count} сканов за 60с")
         
         if not scan_collection:
             raise Exception(f"Не удалось собрать данные для угла {corner_name}")
@@ -223,9 +228,7 @@ class CornerCalibrator:
     
         log("🔄 Starting calibration of all projection corners")
         log("Please prepare for corner calibration")
-        log("⏳ Waiting 10 seconds before starting...")
-        time.sleep(10)
-    
+
         corners = []
         for i, corner_name in enumerate(corner_names):
             log(f"\n{'='*60}")
@@ -235,8 +238,8 @@ class CornerCalibrator:
         
             # Перед первым углом дополнительная пауза не нужна (уже была)
             if i > 0:
-                log(f"⏳ Waiting 3 seconds to move to corner '{corner_name}'...")
-                time.sleep(3)
+                log(f"⏳ Waiting 5 seconds to move to corner '{corner_name}'...")
+                time.sleep(5)
         
             try:
                 corner_data = self.calibrate_corner(lidar, detector, corner_name, scan_count=20, log_callback=log_callback)
@@ -245,8 +248,8 @@ class CornerCalibrator:
                 # Пауза после калибровки угла (кроме последнего)
                 if i < len(corner_names) - 1:
                     log(f"✅ Corner {corner_name} completed. Prepare for next corner...")
-                    log(f"⏳ Waiting 3 seconds until next corner...")
-                    time.sleep(3)
+                    log(f"⏳ Waiting 5 seconds until next corner...")
+                    time.sleep(5)
                 
             except Exception as e:
                 log(f"❌ ERROR calibrating corner {corner_name}: {e}")

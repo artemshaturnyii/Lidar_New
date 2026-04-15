@@ -241,7 +241,7 @@ class LiDARApp:
 
             if self.controller.mouse_controller:
                 if self.controller.corners:
-                    self.gui.update_mouse_status_label("Ready", "green")
+                    self.gui.update_mouse_status_label("Ready", "Blue")
 
         threading.Thread(target=init, daemon=True).start()
 
