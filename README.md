@@ -22,59 +22,102 @@
 
 ---
 
-## 🧱 Архитектура проекта
+## Архитектура проекта
 
-```
-Lidar_New/
-├── app.py                          # Главный файл, GUI-фасад
-├── app_controller.py               # Бизнес-логика, цикл детекции
-├── config.py                       # Централизованная конфигурация
-├── system_setup.py                 # Автоустановка зависимостей (НОВОЕ)
-├── requirements.txt                # Зависимости проекта
-├── plot_manager.py                 # Matplotlib визуализация
-├── gui_builder.py                  # Tkinter GUI компоненты
-│
-├── calibration/                    # Модуль калибровки фона
-│   ├── __init__.py
-│   ├── calibrator.py
-│   ├── data_handlers.py
-│   └── file_io.py
-│
-├── detection/                      # Модуль детекции касаний
-│   ├── __init__.py
-│   ├── touch_detector.py           # Полный детектор (для отладки)
-│   ├── comparators.py              # Функции сравнения сканов
-│   ├── threshold_config.py         # Конфигурация порогов
-│   └── fast_detector.py            # Быстрый детектор (LUT, для мыши)
-│
-├── lidar_sdk/                      # SDK для работы с лидаром LD-M1S
-│   ├── __init__.py
-│   ├── lidar_m1.py                 # Основной класс лидара
-│   ├── connection.py               # TCP соединение
-│   ├── protocol.py                 # Парсинг пакетов, CRC8
-│   └── models.py                   # Point, Node, DataPackM1
-│
-├── mouse_controller/               # Модуль управления мышью
-│   ├── __init__.py
-│   └── mouse_controller.py         # Мультибэкенд (Win32/ydotool/Xlib/Wayland)
-│
-├── noise_filter/                   # Модуль фильтрации шума
-│   ├── __init__.py
-│   ├── noise_profiler.py           # Профилирование шума
-│   ├── noise_filter.py             # Фильтр ложных срабатываний
-│   └── corner_calibration.py       # Калибровка углов проекции
-│
-├── persistent_noise_filter/        # Модуль постоянного шума
-│   ├── __init__.py
-│   └── persistent_noise_manager.py # JSON-хранение постоянных точек
-│
-└── orientation/                    # Модуль ориентации (не интегрирован в GUI)
-    ├── __init__.py
-    └── orientation.py
-```
+### Уровень 1: Презентация (GUI)
+- `app.py` — главный фасад, связывает все компоненты
+- `gui_builder.py` — построение Tkinter интерфейса (кнопки, статусы, лог)
+- `plot_manager.py` — визуализация данных на matplotlib (полярный график)
+
+### Уровень 2: Бизнес-логика (Controller)
+- `app_controller.py` — центральная оркестрация:
+  - Инициализация лидара и мыши
+  - Запуск цикла детекции
+  - Обработка callbacks от GUI и SDK
+  - Проверка готовности системы
+
+### Уровень 3: Обработка данных (Business Modules)
+
+#### Калибровка (`calibration/`)
+- `calibrator.py` — оркестрация процесса калибровки
+- `data_handlers.py` — построение фоновой карты (медиана + интерполяция)
+- `file_io.py` — сохранение/загрузка `.npz`
+
+#### Детекция касаний (`detection/`)
+- `touch_detector.py` — полный конвейер детекции (8 шагов фильтрации)
+- `fast_detector.py` — оптимизированный детектор для мыши (LUT + векторизация)
+- `comparators.py` — функции сравнения сканов и отклонений
+- `threshold_config.py` — пресеты порогов (default/sensitive/robust)
+
+#### Фильтрация шума (`noise_filter/`)
+- `noise_profiler.py` — сбор статистики ложных срабатываний
+- `noise_filter.py` — фильтрация по профилю шума
+- `corner_calibration.py` — калибровка 4 углов проекции
+
+#### Постоянный шум (`persistent_noise_filter/`)
+- `persistent_noise_manager.py` — долгосрочное хранение шумовых точек (JSON)
+
+### Уровень 4: Аппаратный слой (Hardware)
+
+#### Лидар (`lidar_sdk/`)
+- `lidar_m1.py` — драйвер лидара (чтение пакетов, сбор сканов)
+- `connection.py` — TCP соединение (192.168.0.7:25168)
+- `protocol.py` — парсинг пакетов, CRC8 валидация
+- `models.py` — модели данных (Point, Node, DataPackM1)
+
+#### Управление мышью (`mouse_controller/`)
+- `mouse_controller.py` — мультибэкенд контроллер:
+  - Windows: Win32 API
+  - Linux: ydotool → Xlib → wayland-automation (fallback цепочка)
+  - Гомография: проекция LiDAR → экран
+
+### Уровень 5: Системная настройка (Setup)
+- `system_setup.py` — автоматическая установка зависимостей:
+  - Python пакеты (pip)
+  - Системные утилиты (apt)
+  - Права доступа (udev правила)
 
 ---
 
+## 📊 Поток данных
+
+- LiDAR (TCP) → lidar_sdk (парсинг пакетов → Point)
+- lidar_sdk → app_controller (_detection_loop)
+- app_controller → detection/fast_detector (касания)
+- detection → noise_filter (фильтрация ложных)
+- detection → mouse_controller (движение курсора)
+- app_controller → calibration (фоновая карта)
+- app_controller → noise_filter (профиль шума)
+- app_controller → corner_calibration (углы проекции)
+
+---
+
+## 🖥️ Бэкенды управления мышью (Linux)
+
+**Приоритет 1: ydotool**
+- Платформа: X11 + Wayland
+- Требования: `/dev/uinput`, демон `ydotoold`
+- Команды: `mousemove`, `mousedown`, `mouseup`
+
+**Приоритет 2: Xlib**
+- Платформа: X11 только
+- Требования: `python-xlib`, переменная `$DISPLAY`
+- Команды: `warp_pointer`, `fake_input`
+
+**Приоритет 3: wayland-automation**
+- Платформа: Wayland (wlroots)
+- Требования: `wayland-automation` пакет
+- Ограничения: поддержка только wlroots композитеров
+
+---
+
+## 📁 Файлы данных
+
+- `background.npz` (calibration/) — фоновая карта (углы + расстояния)
+- `noise_profile.json` (noise_filter/) — профиль статистического шума
+- `persistent_noise_points.json` (persistent_noise_filter/) — постоянные точки шума
+- `projection_corners.json` (noise_filter/) — 4 угла для гомографии
+- `.setup_complete` (system_setup.py) — маркер завершённой настройки
 ## 🔧 Установка
 
 ### Требования:
