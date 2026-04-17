@@ -63,6 +63,10 @@ class AppController:
         self.mouse_controller = None
         self.background_map = None
         self.corners = None
+        
+        # Кэш для проверки point-in-polygon
+        self._polygon_bbox = None
+        self._polygon_corners_cartesian = None
 
         # Состояние
         self.running = False
@@ -302,6 +306,10 @@ class AppController:
                 self.on_status_update("corners", f"{len(self.corners)}/4", "orange")
 
             self.on_log(f"💾 Сохранены данные углов ({len(self.corners)} шт.)")
+            
+            # ✅ Обновляем кэш bounding box для проверки point-in-polygon
+            self._update_polygon_bbox(self.corners)
+            
         except Exception as e:
             self.on_log(f"❌ Ошибка сохранения углов: {e}")
 
@@ -352,6 +360,9 @@ class AppController:
                 self.on_status_update("corners", "Loaded", "green")
                 self.on_log(f"💾 Loaded existing corners from '{self.projection_corners_file}'")
                 loaded_anything = True
+                
+                # ✅ Обновляем кэш bounding box при загрузке
+                self._update_polygon_bbox(self.corners)
         except Exception:
             pass
 
@@ -473,19 +484,8 @@ class AppController:
                 last_scan_num = scan_num
 
                 if current_scan and len(current_scan) >= 5:
-                    # Быстрая проверка качества скана
-                    angles = [p.angle for p in current_scan]
-                    if len(angles) > 1:
-                        angle_range = max(angles) - min(angles)
-                        if angle_range < 3:
-                            continue
-
-                    # Выравнивание скана к 0° + сортировка
-                    first_point_angle = current_scan[0].angle
-                    shift = first_point_angle
+                    # Сортировка скана по углу
                     corrected_scan = sorted(current_scan, key=lambda p: p.angle)
-                    for p in corrected_scan:
-                        p.angle = (p.angle - shift) % 360
 
                     # ─── Быстрый путь для мыши (LUT, без группировок) ───
                     touch_point = None
@@ -499,7 +499,7 @@ class AppController:
 
                         # ПРОВЕРКА: точка внутри углов проекции
                         if touch_point and self.corners:
-                            if not self._point_in_polygon_fast(touch_point, self.corners):
+                            if not self._point_in_polygon_fast(touch_point):
                                 touch_point = None
 
                     # Обновление графика — каждые 33мс
@@ -530,30 +530,93 @@ class AppController:
 
     # ─── Утилиты ────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _point_in_polygon_fast(point: Point, polygon_corners: List[dict]) -> bool:
-        """Проверка точки внутри прямоугольной рамки в декартовых координатах."""
+    def _update_polygon_bbox(self, polygon_corners: List[dict]):
+        """
+        Пересчитывает полигон углов проекции (кэш для проверки point-in-polygon).
+        Используем правильное преобразование: X = sin, Y = cos (LiDAR: 0° = Север)
+        """
         import numpy as np
         if not polygon_corners or len(polygon_corners) < 4:
-            return False
+            self._polygon_bbox = None
+            self._polygon_corners_cartesian = None
+            return
 
         def polar_to_cartesian(angle_deg, distance):
+            # LiDAR: 0° = Север (вверх), угол растёт по часовой стрелке
             angle_rad = np.radians(angle_deg)
-            x = distance * np.cos(angle_rad)
-            y = distance * np.sin(angle_rad)
+            x = distance * np.sin(angle_rad)   # ✅ sin для X
+            y = distance * np.cos(angle_rad)   # ✅ cos для Y
             return x, y
 
-        polygon_points = []
-        for corner in polygon_corners:
-            x, y = polar_to_cartesian(corner['angle'], corner['distance'])
-            polygon_points.append((x, y))
+        # Сохраняем вершины полигона в порядке: TL → TR → BR → BL
+        corner_order = ['top_left', 'top_right', 'bottom_right', 'bottom_left']
+        corner_map = {c['name']: c for c in polygon_corners}
+        
+        self._polygon_corners_cartesian = []
+        x_coords = []
+        y_coords = []
+        
+        for name in corner_order:
+            if name in corner_map:
+                c = corner_map[name]
+                x, y = polar_to_cartesian(c['angle'], c['distance'])
+                self._polygon_corners_cartesian.append((x, y))
+                x_coords.append(x)
+                y_coords.append(y)
 
-        px, py = polar_to_cartesian(point.angle, point.distance)
+        # Bounding box для быстрой отсечки (оптимизация)
+        if len(x_coords) == 4:
+            self._polygon_bbox = (min(x_coords), max(x_coords), min(y_coords), max(y_coords))
+        else:
+            self._polygon_bbox = None
 
-        x_coords = [p[0] for p in polygon_points]
-        y_coords = [p[1] for p in polygon_points]
+        if len(self._polygon_corners_cartesian) == 4:
+            print(f"📏 Полигон углов: {len(self._polygon_corners_cartesian)} вершин")
 
-        min_x, max_x = min(x_coords), max(x_coords)
-        min_y, max_y = min(y_coords), max(y_coords)
+    def _point_in_polygon_fast(self, point: Point) -> bool:
+        """
+        Проверка точки внутри четырёхугольника углов проекции.
+        Алгоритм: Ray Casting (crossing number)
+        
+        Args:
+            point: Точка касания (angle, distance в мм)
+            
+        Returns:
+            True если точка внутри полигона
+        """
+        import numpy as np
+        
+        if self._polygon_corners_cartesian is None:
+            return False
 
-        return (min_x <= px <= max_x) and (min_y <= py <= max_y)
+        # Преобразуем точку в декартовы координаты (согласовано с _update_polygon_bbox)
+        angle_rad = np.radians(point.angle)
+        px = point.distance * np.sin(angle_rad)   # ✅ sin для X
+        py = point.distance * np.cos(angle_rad)   # ✅ cos для Y
+
+        # Быстрая отсечка по bounding box (оптимизация)
+        if self._polygon_bbox:
+            min_x, max_x, min_y, max_y = self._polygon_bbox
+            if not (min_x <= px <= max_x and min_y <= py <= max_y):
+                return False
+
+        # Ray Casting алгоритм — считаем пересечения луча с рёбрами полигона
+        n = len(self._polygon_corners_cartesian)
+        inside = False
+        
+        j = n - 1
+        for i in range(n):
+            xi, yi = self._polygon_corners_cartesian[i]
+            xj, yj = self._polygon_corners_cartesian[j]
+            
+            # Проверяем пересечение луча y = py, x >= px с ребром (i, j)
+            # Добавляем epsilon для избежания деления на ноль
+            intersect = ((yi > py) != (yj > py)) and \
+                        (px < (xj - xi) * (py - yi) / (yj - yi + 1e-10) + xi)
+            
+            if intersect:
+                inside = not inside
+            
+            j = i
+
+        return inside

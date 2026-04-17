@@ -1,70 +1,263 @@
 """
-Модуль для управления курсором мыши на основе данных LiDAR.
-Кроссплатформенный: Win32 API (Windows) / Xlib (Linux).
+Универсальный контроллер мыши для Windows и Linux (X11/Wayland).
+Авто-детекция платформы, множественные бэкенды.
 """
 
 import platform
-import numpy as np
+import os
+import subprocess
+import shutil
 from typing import List, Optional, Tuple
 from lidar_sdk import Point
 import time
+import numpy as np
 
 
-# ─── Платформо-зависимые операции ──────────────────────────────────────
+# ─── Детекция платформы и сессии ──────────────────────────────────────
 
 _SYSTEM = platform.system()
 
-if _SYSTEM == "Windows":
-    import ctypes
-    _user32 = ctypes.windll.user32
+def _detect_session_type() -> str:
+    """Определяет тип сессии: 'wayland', 'x11', или 'unknown'."""
+    if os.environ.get('WAYLAND_DISPLAY'):
+        return 'wayland'
+    elif os.environ.get('DISPLAY'):
+        return 'x11'
+    return 'unknown'
 
-    def _get_screen_size() -> Tuple[int, int]:
-        return (_user32.GetSystemMetrics(0), _user32.GetSystemMetrics(1))
+def _check_ydotool() -> bool:
+    """Проверяет доступность ydotool."""
+    return shutil.which('ydotool') is not None
 
-    def _set_cursor_pos(x: int, y: int) -> None:
-        _user32.SetCursorPos(x, y)
+def _check_xlib() -> bool:
+    """Проверяет доступность Xlib."""
+    try:
+        from Xlib import display
+        return True
+    except ImportError:
+        return False
 
-    def _mouse_down() -> None:
-        _user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+def _check_wayland_automation() -> bool:
+    """Проверяет доступность wayland-automation."""
+    try:
+        import wayland_automation
+        return True
+    except ImportError:
+        return False
 
-    def _mouse_up() -> None:
-        _user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
 
-elif _SYSTEM == "Linux":
-    from Xlib import display, X
-    from Xlib.ext.xtest import fake_input
+# ─── Бэкенд 1: Windows Win32 API ──────────────────────────────────────
 
-    _dpy = display.Display()
-    _root = _dpy.screen().root
+class Win32Backend:
+    """Бэкенд на основе Win32 API — только Windows."""
+    
+    def __init__(self):
+        import ctypes
+        self._user32 = ctypes.windll.user32
+    
+    def set_cursor_pos(self, x: int, y: int) -> None:
+        self._user32.SetCursorPos(x, y)
+    
+    def mouse_down(self) -> None:
+        self._user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+    
+    def mouse_up(self) -> None:
+        self._user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+    
+    def get_screen_size(self) -> Tuple[int, int]:
+        return (self._user32.GetSystemMetrics(0), self._user32.GetSystemMetrics(1))
 
-    def _get_screen_size() -> Tuple[int, int]:
-        return (_root.get_geometry().width, _root.get_geometry().height)
 
-    def _set_cursor_pos(x: int, y: int) -> None:
-        _root.warp_pointer(x, y)
-        _dpy.sync()
+# ─── Бэкенд 2: ydotool (универсальный Linux) ─────────────────────────
 
-    def _mouse_down() -> None:
-        fake_input(_dpy, X.ButtonPress, 1)
-        _dpy.sync()
+class YdotoolBackend:
+    """Бэкенд на основе ydotool — работает на X11 и Wayland."""
+    
+    def __init__(self):
+        self.ydotool_path = shutil.which('ydotool')
+        if not self.ydotool_path:
+            raise RuntimeError("ydotool не найден в PATH. Установите: sudo apt install ydotool")
+        
+        # Проверка доступа к /dev/uinput
+        if not os.access('/dev/uinput', os.W_OK):
+            print("⚠️  ПРЕДУПРЕЖДЕНИЕ: Нет доступа к /dev/uinput")
+            print("   Решение: sudo chmod 666 /dev/uinput")
+            print("   Или создайте udev правило: echo 'KERNEL==\"uinput\", MODE=\"0666\"' | sudo tee /etc/udev/rules.d/99-uinput.rules")
+    
+    def set_cursor_pos(self, x: int, y: int) -> None:
+        result = subprocess.run([
+            self.ydotool_path, 'mousemove', str(x), str(y)
+        ], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"⚠️  ydotool mousemove error: {result.stderr}")
+    
+    def mouse_down(self) -> None:
+        result = subprocess.run([
+            self.ydotool_path, 'mousedown', '1'
+        ], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"⚠️  ydotool mousedown error: {result.stderr}")
+    
+    def mouse_up(self) -> None:
+        result = subprocess.run([
+            self.ydotool_path, 'mouseup', '1'
+        ], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"⚠️  ydotool mouseup error: {result.stderr}")
+    
+    def get_screen_size(self) -> Tuple[int, int]:
+        # Попытка получить разрешение через xrandr
+        try:
+            result = subprocess.run(
+                ['xrandr', '--query'], 
+                capture_output=True, text=True, timeout=2
+            )
+            for line in result.stdout.split('\n'):
+                if ' connected' in line and 'x' in line:
+                    # Пример: eDP-1 connected primary 1920x1080+0+0
+                    parts = line.split()
+                    for p in parts:
+                        if 'x' in p and p[0].isdigit():
+                            w, h = p.split('x')[0], p.split('x')[1].split('+')[0]
+                            return int(w), int(h)
+        except Exception as e:
+            print(f"⚠️  xrandr error: {e}")
+        
+        # Fallback: стандартное Full HD
+        print("⚠️  Не удалось определить разрешение экрана, используем 1920x1080")
+        return (1920, 1080)
 
-    def _mouse_up() -> None:
-        fake_input(_dpy, X.ButtonRelease, 1)
-        _dpy.sync()
 
-else:
-    raise RuntimeError(f"Неподдерживаемая ОС: {_SYSTEM}")
 
+# ─── Бэкенд 3: Xlib (X11) ────────────────────────────────────────────
+
+class XlibBackend:
+    """Бэкенд на основе Xlib — только X11."""
+    
+    def __init__(self):
+        from Xlib import display, X
+        self._dpy = display.Display()
+        self._root = self._dpy.screen().root
+    
+    def set_cursor_pos(self, x: int, y: int) -> None:
+        self._root.warp_pointer(x, y)
+        self._dpy.sync()
+    
+    def mouse_down(self) -> None:
+        from Xlib.ext.xtest import fake_input
+        from Xlib import X
+        fake_input(self._dpy, X.ButtonPress, 1)
+        self._dpy.sync()
+    
+    def mouse_up(self) -> None:
+        from Xlib.ext.xtest import fake_input
+        from Xlib import X
+        fake_input(self._dpy, X.ButtonRelease, 1)
+        self._dpy.sync()
+    
+    def get_screen_size(self) -> Tuple[int, int]:
+        return (self._root.get_geometry().width, self._root.get_geometry().height)
+
+
+# ─── Бэкенд 4: wayland-automation (Wayland wlroots) ──────────────────
+
+class WaylandAutomationBackend:
+    """Бэкенд на основе wayland-automation — только Wayland (wlroots)."""
+    
+    def __init__(self):
+        import wayland_automation as wa
+        self.wa = wa
+    
+    def set_cursor_pos(self, x: int, y: int) -> None:
+        self.wa.click(x, y, button=None)  # move without click
+    
+    def mouse_down(self) -> None:
+        self.wa.click(0, 0, button="left")  # координаты не важны для клика
+    
+    def mouse_up(self) -> None:
+        # wayland-automation не имеет отдельной mouse_up
+        pass
+    
+    def get_screen_size(self) -> Tuple[int, int]:
+        try:
+            from wayland_automation.utils.screen_resolution import get_screen_resolution
+            return get_screen_resolution()
+        except Exception:
+            return (1920, 1080)
+
+
+# ─── Фабрика бэкендов ─────────────────────────────────────────────────
+
+class BackendFactory:
+    """Создаёт лучший доступный бэкенд для текущей системы."""
+    
+    @staticmethod
+    def create() -> Tuple[object, str]:
+        """
+        Возвращает (backend_instance, backend_name).
+        
+        Приоритеты:
+        - Windows: Win32 API
+        - Linux: ydotool → Xlib → wayland-automation
+        """
+        if _SYSTEM == "Windows":
+            # Windows — только Win32
+            try:
+                return Win32Backend(), "win32"
+            except Exception as e:
+                raise RuntimeError(f"Win32 backend failed: {e}")
+        
+        elif _SYSTEM == "Linux":
+            # Linux — цепочка fallback
+            session = _detect_session_type()
+            
+            # Приоритет 1: ydotool (универсальный)
+            if _check_ydotool():
+                try:
+                    return YdotoolBackend(), "ydotool"
+                except Exception as e:
+                    print(f"⚠️  ydotool backend failed: {e}")
+            
+            # Приоритет 2: Xlib для X11
+            if session == 'x11' and _check_xlib():
+                try:
+                    return XlibBackend(), "xlib"
+                except Exception as e:
+                    print(f"⚠️  Xlib backend failed: {e}")
+            
+            # Приоритет 3: wayland-automation для Wayland
+            if session == 'wayland' and _check_wayland_automation():
+                try:
+                    return WaylandAutomationBackend(), "wayland-automation"
+                except Exception as e:
+                    print(f"⚠️  wayland-automation backend failed: {e}")
+            
+            raise RuntimeError(
+                f"Не найдено доступного бэкенда для мыши.\n"
+                f"Сессия: {session}\n"
+                f"Установите один из:\n"
+                f"  - ydotool (рекомендуется): sudo apt install ydotool\n"
+                f"  - Xlib (X11): pip install python-xlib\n"
+                f"  - wayland-automation (Wayland): pip install wayland-automation"
+            )
+        
+        else:
+            raise RuntimeError(f"Неподдерживаемая ОС: {_SYSTEM}")
+
+
+# ─── Основной контроллер ──────────────────────────────────────────────
 
 class MouseController:
-    """Контроллер для управления курсором мыши на основе касаний LiDAR.
-    Мгновенное перемещение через Win32 SetCursorPos (Win) или Xlib warp_pointer (Linux).
+    """
+    Универсальный контроллер мыши с авто-выбором бэкенда.
     """
 
     def __init__(self, screen_width: int = None, screen_height: int = None):
-        """Инициализация контроллера мыши"""
+        self.backend, self.backend_name = BackendFactory.create()
+        print(f"✅ Mouse backend: {self.backend_name}")
+        
         if screen_width is None or screen_height is None:
-            self.screen_width, self.screen_height = _get_screen_size()
+            self.screen_width, self.screen_height = self.backend.get_screen_size()
         else:
             self.screen_width = screen_width
             self.screen_height = screen_height
@@ -75,29 +268,15 @@ class MouseController:
         self.lidar_corners = None
         self.screen_corners = None
         self.lidar_bbox = None
-
-        # Направление севера
         self.north_angle = 0.0
-
-        # Параметры кликов
         self.click_delay = 0.3
         self.last_click_time = 0
-
-        # Отслеживание состояния касаний
         self.current_touch_state = False
         self.touch_start_time = 0
-
-        # Мёртвая зона — курсор двигается только если смещение > dead_zone_radius px
-        self.dead_zone_radius = 50  # пиксели экрана
-
-        # Зафиксированная позиция курсора в пределах мёртвой зоны
+        self.dead_zone_radius = 50
         self._anchor_screen_x: Optional[int] = None
         self._anchor_screen_y: Optional[int] = None
-
-        # Гомография для перспективного преобразования (4 угла → экран)
         self._homography: Optional[np.ndarray] = None
-
-        # Предвычисленные константы для map_touch_to_screen
         self._precomputed = {}
 
     def set_projection_corners(self, corners: List[dict]):
@@ -109,10 +288,6 @@ class MouseController:
         else:
             print("⚠️  Недостаточно углов для управления мышью")
             self.corners = None
-            self.lidar_corners = None
-            self.screen_corners = None
-            self.lidar_bbox = None
-            self._precomputed = {}
 
     def _setup_corner_mapping(self):
         """Настраивает соответствие углов LiDAR и экрана с гомографией."""
@@ -160,11 +335,12 @@ class MouseController:
 
         self._precomputed['screen_max_x'] = float(self.screen_width - 1)
         self._precomputed['screen_max_y'] = float(self.screen_height - 1)
+        self._precomputed['north_rad'] = np.radians(self.north_angle)
 
         print("📏 Гомография вычислена, соответствие углов установлено")
 
     def _compute_bbox_fallback(self, lidar_pts):
-        """Fallback если не все углы найдены — простая проекция."""
+        """Fallback если не все углы найдены."""
         if not lidar_pts:
             return
         x_coords = [p[0] for p in lidar_pts]
@@ -178,11 +354,7 @@ class MouseController:
 
     @staticmethod
     def _compute_homography(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
-        """
-        Вычисляет матрицу гомографии 3x3 без OpenCV.
-        src: (4, 2) — точки источника (LiDAR в мм)
-        dst: (4, 2) — точки назначения (экран в px)
-        """
+        """Вычисляет матрицу гомографии 3x3 без OpenCV."""
         A = []
         for i in range(4):
             sx, sy = src[i]
@@ -197,9 +369,7 @@ class MouseController:
         return H
 
     def map_touch_to_screen(self, touch_point: Point) -> Optional[Tuple[int, int]]:
-        """Преобразует точку касания LiDAR в координаты экрана.
-        Использует гомографию если доступна, иначе — билинейную проекцию.
-        """
+        """Преобразует точку касания LiDAR в координаты экрана."""
         if not self._precomputed:
             return None
 
@@ -247,7 +417,7 @@ class MouseController:
         if self._anchor_screen_x is None:
             self._anchor_screen_x = x
             self._anchor_screen_y = y
-            _set_cursor_pos(x, y)
+            self.backend.set_cursor_pos(x, y)
             self.last_mouse_position = (x, y)
             return True
 
@@ -258,34 +428,26 @@ class MouseController:
         if distance > self.dead_zone_radius:
             self._anchor_screen_x = x
             self._anchor_screen_y = y
-            _set_cursor_pos(x, y)
+            self.backend.set_cursor_pos(x, y)
             self.last_mouse_position = (x, y)
             return True
 
         return False
 
     def update_touch_state(self, has_touch: bool, touch_point: Point = None) -> None:
-        """
-        Обновляет состояние касания.
-        Новое касание → ЛКМ DOWN, продолжение → курсор двигается (drag),
-        отпускание → ЛКМ UP.
-        """
+        """Обновляет состояние касания."""
         if has_touch and touch_point:
             if not self.current_touch_state:
-                # Начало нового касания — сбрасываем якорь + ЛКМ DOWN
                 self._anchor_screen_x = None
                 self._anchor_screen_y = None
                 self.current_touch_state = True
                 self.move_mouse_to_touch(touch_point)
-                _mouse_down()
+                self.backend.mouse_down()
             else:
-                # Продолжение касания — обновляем позицию (drag)
                 self.move_mouse_to_touch(touch_point)
         else:
-            # Нет касания
             if self.current_touch_state:
-                # Отпускание — ЛКМ UP
-                _mouse_up()
+                self.backend.mouse_up()
                 self.current_touch_state = False
                 self._anchor_screen_x = None
                 self._anchor_screen_y = None
@@ -312,7 +474,6 @@ class MouseController:
     def set_click_delay(self, delay_seconds: float):
         """Устанавливает задержку после клика"""
         self.click_delay = max(0.1, delay_seconds)
-        print(f"⏱️  Задержка после клика установлена: {self.click_delay}с")
 
 
 # Глобальный экземпляр контроллера

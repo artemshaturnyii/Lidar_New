@@ -11,6 +11,18 @@ import time
 import queue
 from typing import List, Optional
 
+# ─── Автоматическая настройка системы (НОВОЕ) ─────────────────────────
+from system_setup import SystemSetup
+
+def _run_system_setup():
+    """Запускает проверку и настройку системных зависимостей."""
+    setup = SystemSetup()
+    setup.run_full_setup(auto_install=True)
+
+# Запуск настройки перед импортом остальных модулей
+_run_system_setup()
+# ──────────────────────────────────────────────────────────────────────
+
 from lidar_sdk import Point
 from app_controller import AppController, MOUSE_CONTROL_AVAILABLE
 from plot_manager import PlotManager
@@ -241,7 +253,7 @@ class LiDARApp:
 
             if self.controller.mouse_controller:
                 if self.controller.corners:
-                    self.gui.update_mouse_status_label("Ready", "Blue")
+                    self.gui.update_mouse_status_label("Ready", "green")
 
         threading.Thread(target=init, daemon=True).start()
 
