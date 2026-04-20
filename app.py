@@ -35,7 +35,7 @@ class LiDARApp:
     def __init__(self, root):
         self.root = root
         self.root.title("LiDAR Control Panel")
-        self.root.geometry("2000x1200")
+        self.root.geometry("1980x1024")
 
         # Очередь обновления графиков
         self.plot_queue = queue.Queue()
@@ -124,7 +124,7 @@ class LiDARApp:
         """Создание фоновой карты."""
         def task():
             self.gui.set_button_state("background", "disabled")
-            success = self.controller.create_background_map(num_scans=10)
+            success = self.controller.create_background_map(num_scans=20)
             self.gui.set_button_state("background", "normal")
         threading.Thread(target=task, daemon=True).start()
 
@@ -132,7 +132,7 @@ class LiDARApp:
         """Профилирование шума."""
         def task():
             self.gui.set_button_state("noise", "disabled")
-            success = self.controller.profile_noise(duration=10)
+            success = self.controller.profile_noise(duration=30)
             self.gui.set_button_state("noise", "normal")
         threading.Thread(target=task, daemon=True).start()
 

@@ -59,10 +59,10 @@ class Win32Backend:
         self._user32.SetCursorPos(x, y)
     
     def mouse_down(self) -> None:
-        self._user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+        self._user32.mouse_event(0x0002, 0, 0, 0, 0)
     
     def mouse_up(self) -> None:
-        self._user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+        self._user32.mouse_event(0x0004, 0, 0, 0, 0)
     
     def get_screen_size(self) -> Tuple[int, int]:
         return (self._user32.GetSystemMetrics(0), self._user32.GetSystemMetrics(1))
@@ -78,11 +78,9 @@ class YdotoolBackend:
         if not self.ydotool_path:
             raise RuntimeError("ydotool не найден в PATH. Установите: sudo apt install ydotool")
         
-        # Проверка доступа к /dev/uinput
         if not os.access('/dev/uinput', os.W_OK):
             print("⚠️  ПРЕДУПРЕЖДЕНИЕ: Нет доступа к /dev/uinput")
             print("   Решение: sudo chmod 666 /dev/uinput")
-            print("   Или создайте udev правило: echo 'KERNEL==\"uinput\", MODE=\"0666\"' | sudo tee /etc/udev/rules.d/99-uinput.rules")
     
     def set_cursor_pos(self, x: int, y: int) -> None:
         result = subprocess.run([
@@ -106,7 +104,6 @@ class YdotoolBackend:
             print(f"⚠️  ydotool mouseup error: {result.stderr}")
     
     def get_screen_size(self) -> Tuple[int, int]:
-        # Попытка получить разрешение через xrandr
         try:
             result = subprocess.run(
                 ['xrandr', '--query'], 
@@ -114,7 +111,6 @@ class YdotoolBackend:
             )
             for line in result.stdout.split('\n'):
                 if ' connected' in line and 'x' in line:
-                    # Пример: eDP-1 connected primary 1920x1080+0+0
                     parts = line.split()
                     for p in parts:
                         if 'x' in p and p[0].isdigit():
@@ -123,10 +119,8 @@ class YdotoolBackend:
         except Exception as e:
             print(f"⚠️  xrandr error: {e}")
         
-        # Fallback: стандартное Full HD
         print("⚠️  Не удалось определить разрешение экрана, используем 1920x1080")
         return (1920, 1080)
-
 
 
 # ─── Бэкенд 3: Xlib (X11) ────────────────────────────────────────────
@@ -169,13 +163,12 @@ class WaylandAutomationBackend:
         self.wa = wa
     
     def set_cursor_pos(self, x: int, y: int) -> None:
-        self.wa.click(x, y, button=None)  # move without click
+        self.wa.click(x, y, button=None)
     
     def mouse_down(self) -> None:
-        self.wa.click(0, 0, button="left")  # координаты не важны для клика
+        self.wa.click(0, 0, button="left")
     
     def mouse_up(self) -> None:
-        # wayland-automation не имеет отдельной mouse_up
         pass
     
     def get_screen_size(self) -> Tuple[int, int]:
@@ -193,39 +186,27 @@ class BackendFactory:
     
     @staticmethod
     def create() -> Tuple[object, str]:
-        """
-        Возвращает (backend_instance, backend_name).
-        
-        Приоритеты:
-        - Windows: Win32 API
-        - Linux: ydotool → Xlib → wayland-automation
-        """
         if _SYSTEM == "Windows":
-            # Windows — только Win32
             try:
                 return Win32Backend(), "win32"
             except Exception as e:
                 raise RuntimeError(f"Win32 backend failed: {e}")
         
         elif _SYSTEM == "Linux":
-            # Linux — цепочка fallback
             session = _detect_session_type()
             
-            # Приоритет 1: ydotool (универсальный)
             if _check_ydotool():
                 try:
                     return YdotoolBackend(), "ydotool"
                 except Exception as e:
                     print(f"⚠️  ydotool backend failed: {e}")
             
-            # Приоритет 2: Xlib для X11
             if session == 'x11' and _check_xlib():
                 try:
                     return XlibBackend(), "xlib"
                 except Exception as e:
                     print(f"⚠️  Xlib backend failed: {e}")
             
-            # Приоритет 3: wayland-automation для Wayland
             if session == 'wayland' and _check_wayland_automation():
                 try:
                     return WaylandAutomationBackend(), "wayland-automation"
@@ -273,11 +254,22 @@ class MouseController:
         self.last_click_time = 0
         self.current_touch_state = False
         self.touch_start_time = 0
-        self.dead_zone_radius = 50
+        self.dead_zone_radius = 75
         self._anchor_screen_x: Optional[int] = None
         self._anchor_screen_y: Optional[int] = None
         self._homography: Optional[np.ndarray] = None
         self._precomputed = {}
+        
+        # Сглаживание позиции курсора
+        self._position_buffer: List[Tuple[int, int]] = []
+        self._position_buffer_size = 2  # ✅ Уменьшено с 3 до 2 (меньше задержка)
+        self._smoothing_enabled = True
+        
+        # ✅ Гистерезис состояния касания (ОПТИМИЗИРОВАНО)
+        self._touch_hold_counter: int = 0
+        self._touch_release_counter: int = 0
+        self._min_touch_frames: int = 1  # ✅ Уменьшено с 2 до 1 (мгновенный отклик)
+        self._min_release_frames: int = 2  # ✅ Уменьшено с 3 до 2 (всё ещё стабильно)
 
     def set_projection_corners(self, corners: List[dict]):
         """Установка углов проекции для калибровки"""
@@ -404,7 +396,7 @@ class MouseController:
         return (int(sx), int(sy))
 
     def move_mouse_to_touch(self, touch_point: Point) -> bool:
-        """Мгновенное перемещение курсора в позицию касания с мёртвой зоной."""
+        """Мгновенное перемещение курсора в позицию касания с мёртвой зоной и сглаживанием."""
         if not self.is_active:
             return False
 
@@ -413,6 +405,15 @@ class MouseController:
             return False
 
         x, y = screen_coords
+
+        # ✅ Применяем сглаживание позиции (2 кадра вместо 3)
+        if self._smoothing_enabled:
+            self._position_buffer.append((x, y))
+            if len(self._position_buffer) > self._position_buffer_size:
+                self._position_buffer.pop(0)
+            
+            x = int(sum(p[0] for p in self._position_buffer) / len(self._position_buffer))
+            y = int(sum(p[1] for p in self._position_buffer) / len(self._position_buffer))
 
         if self._anchor_screen_x is None:
             self._anchor_screen_x = x
@@ -435,22 +436,37 @@ class MouseController:
         return False
 
     def update_touch_state(self, has_touch: bool, touch_point: Point = None) -> None:
-        """Обновляет состояние касания."""
+        """Обновляет состояние касания с гистерезисом (защита от джиттера)."""
+        
         if has_touch and touch_point:
-            if not self.current_touch_state:
-                self._anchor_screen_x = None
-                self._anchor_screen_y = None
-                self.current_touch_state = True
-                self.move_mouse_to_touch(touch_point)
-                self.backend.mouse_down()
-            else:
-                self.move_mouse_to_touch(touch_point)
+            # ✅ Касание обнаружено
+            self._touch_release_counter = 0
+            self._touch_hold_counter += 1
+            
+            # ✅ БЫЛО: >= 2 → СЕЙЧАС: >= 1 (мгновенная реакция)
+            if self._touch_hold_counter >= self._min_touch_frames:
+                if not self.current_touch_state:
+                    self._position_buffer.clear()
+                    self._anchor_screen_x = None
+                    self._anchor_screen_y = None
+                    self.current_touch_state = True
+                    self.move_mouse_to_touch(touch_point)
+                    self.backend.mouse_down()
+                else:
+                    self.move_mouse_to_touch(touch_point)
         else:
-            if self.current_touch_state:
-                self.backend.mouse_up()
-                self.current_touch_state = False
-                self._anchor_screen_x = None
-                self._anchor_screen_y = None
+            # ✅ Касание не обнаружено
+            self._touch_hold_counter = 0
+            self._touch_release_counter += 1
+            
+            # ✅ БЫЛО: >= 3 → СЕЙЧАС: >= 2 (всё ещё защита от джиттера)
+            if self._touch_release_counter >= self._min_release_frames:
+                if self.current_touch_state:
+                    self.backend.mouse_up()
+                    self.current_touch_state = False
+                    self._anchor_screen_x = None
+                    self._anchor_screen_y = None
+                    self._position_buffer.clear()
 
     def enable_control(self):
         """Включает управление мышью"""
@@ -460,6 +476,9 @@ class MouseController:
         self.last_click_time = 0
         self._anchor_screen_x = None
         self._anchor_screen_y = None
+        self._position_buffer.clear()
+        self._touch_hold_counter = 0
+        self._touch_release_counter = 0
         print("✅ Управление мышью включено")
 
     def disable_control(self):
@@ -469,6 +488,9 @@ class MouseController:
         self.last_mouse_position = None
         self._anchor_screen_x = None
         self._anchor_screen_y = None
+        self._position_buffer.clear()
+        self._touch_hold_counter = 0
+        self._touch_release_counter = 0
         print("🛑 Управление мышью выключено")
 
     def set_click_delay(self, delay_seconds: float):

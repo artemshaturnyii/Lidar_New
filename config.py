@@ -17,7 +17,7 @@ CALIBRATION_CONFIG = {
 # Параметры обработки данных
 PROCESSING_CONFIG = {
     'background_grid_step': 1.0,      # градусы
-    'angle_tolerance': 0.15,            # градусы для поиска точек
+    'angle_tolerance': 0.5,            # градусы для поиска точек
     'use_median_filter': True,         # использовать медиану вместо среднего
 }
 
@@ -58,7 +58,7 @@ MOUSE_CONFIG = {
     'jitter_filter_threshold': 3.0,   # НОВЫЙ параметр - фильтр дрожания
     'movement_amplification': 1.0,    # НОВЫЙ параметр - усиление движения (1.0 = без усиления)
     # Snap-to-grid параметры
-    'snap_grid_cell_size': 28,        # Размер ячейки сетки в пикселях (мёртвая зона ~25-30px)
+    'snap_grid_cell_size': 28,        # Размер ячейки сетки в пикселях (мёртвая зона)
     'snap_enabled': True,             # Включить привязку к сетке
 }
 
