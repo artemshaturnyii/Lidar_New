@@ -1,7 +1,5 @@
 """
 Быстрый детектор касаний для управления мышью в реальном времени.
-
-Lookup-таблица для O(1) доступа, векторизованные операции.
 """
 
 import numpy as np
@@ -10,19 +8,10 @@ from lidar_sdk import Point
 
 
 class FastTouchDetector:
-    """
-    Быстрая детекция касаний — lookup-таблица + векторизация.
+    """Быстрая детекция касаний с балансом скорости и надёжности."""
 
-    Логика:
-    1. Lookup-таблица 0-359° для O(1) доступа к фону
-    2. Векторизованный поиск кандидатов (все точки сразу)
-    3. Группировка по угловому окну
-    4. Центр массы лучшего кластера
-    5. ✅ Персистентность: удержание касания при временной потере
-    """
-
-    def __init__(self, background_map: Dict[float, float], threshold_mm: float = 50.0,
-                 angle_window: float = 1.0):
+    def __init__(self, background_map: Dict[float, float], threshold_mm: float = 30.0,
+                 angle_window: float = 2.0):
         """
         Args:
             background_map: Словарь {угол: расстояние} фоновой карты
@@ -32,33 +21,30 @@ class FastTouchDetector:
         self.threshold_mm = threshold_mm
         self.angle_window = angle_window
 
-        # Lookup-таблица 0-359° — O(1) доступ вместо np.interp
+        # Lookup-таблица 0-359°
         self._lut = np.full(360, 0.0, dtype=np.float64)
         angles = sorted(background_map.keys())
         distances = [background_map[a] for a in angles]
         idx = np.arange(360)
         self._lut = np.interp(idx, angles, distances, period=360)
 
-        # ✅ НОВОЕ: Персистентность касания
+        # ✅ БАЛАНС: Быстрое первое касание + удержание при движении
         self._last_touch_point: Optional[Point] = None
-        self._persisted_point: Optional[Point] = None  # Точка для удержания
+        self._persisted_point: Optional[Point] = None
         self._missed_frames: int = 0
-        self._max_missed_frames: int = 3  # Держим касание 3 кадра после потери
+        self._max_missed_frames: int = 5  # ✅ ~50мс (было 15 = 150мс)
         self._consecutive_detections: int = 0
-        self._min_consecutive: int = 1  # Быстрая реакция (1 кадр)
+        self._min_consecutive: int = 1
 
     def detect_single_point(self, scan: List[Point]) -> Optional[Point]:
-        """
-        Возвращает точку касания с персистентностью (удержание при временной потере).
-        """
+        """Возвращает точку касания с персистентностью."""
         if not scan:
             self._missed_frames += 1
             if self._missed_frames > self._max_missed_frames:
                 self._persisted_point = None
                 self._last_touch_point = None
-            return self._persisted_point  # Возвращаем последнюю известную позицию
+            return self._persisted_point
 
-        # Векторизованная конвертация
         n = len(scan)
         scan_angles = np.empty(n, dtype=np.float64)
         scan_distances = np.empty(n, dtype=np.float64)
@@ -69,11 +55,10 @@ class FastTouchDetector:
             scan_distances[i] = p.distance
             scan_intensities[i] = p.intensity
 
-        # Lookup фона — O(1) на точку
         idx = np.round(scan_angles).astype(np.int32) % 360
         expected = self._lut[idx]
 
-        # Векторизованная фильтрация
+        # ✅ Более чувствительный порог (30мм)
         mask = (expected <= 3000) & ((expected - scan_distances) >= self.threshold_mm)
 
         candidates_angles = scan_angles[mask]
@@ -81,14 +66,13 @@ class FastTouchDetector:
         candidates_intensities = scan_intensities[mask]
 
         if len(candidates_angles) == 0:
-            # ✅ Касание не обнаружено — но держим последнюю позицию
             self._missed_frames += 1
             if self._missed_frames > self._max_missed_frames:
                 self._persisted_point = None
                 self._last_touch_point = None
             return self._persisted_point
 
-        # Группировка по углу
+        # ✅ Широкое окно группировки (2.0°)
         clusters = self._cluster_by_angle_np(candidates_angles)
 
         if not clusters:
@@ -98,7 +82,6 @@ class FastTouchDetector:
                 self._last_touch_point = None
             return self._persisted_point
 
-        # Лучший кластер — самый большой
         best_cluster = max(clusters, key=len)
 
         if len(best_cluster) == 1:
@@ -107,12 +90,10 @@ class FastTouchDetector:
                                   distance=float(scan_distances[i]),
                                   intensity=float(scan_intensities[i]))
         else:
-            # Центр массы кластера
             idx_c = np.array(best_cluster)
             c_angles = candidates_angles[idx_c]
             c_distances = candidates_distances[idx_c]
 
-            # Циркулярное среднее
             rad = np.radians(c_angles)
             sin_sum = np.sum(np.sin(rad))
             cos_sum = np.sum(np.cos(rad))
@@ -126,16 +107,12 @@ class FastTouchDetector:
         self._missed_frames = 0
         self._consecutive_detections += 1
         self._last_touch_point = current_point
-        self._persisted_point = current_point  # ✅ Сохраняем для удержания
+        self._persisted_point = current_point
 
         return current_point
 
     def _cluster_by_angle_np(self, angles: np.ndarray) -> List[List[int]]:
-        """
-        Группирует индексы точек по угловой близости.
-        angles: numpy array углов (отсортированных)
-        Возвращает список списков индексов.
-        """
+        """Группирует индексы точек по угловой близости."""
         if len(angles) == 0:
             return []
 
@@ -162,12 +139,6 @@ class FastTouchDetector:
         self._missed_frames = 0
         self._consecutive_detections = 0
 
-    # ✅ НОВОЕ: Настройка персистентности
-    def set_persistence(self, max_missed_frames: int = 3):
-        """
-        Настраивает персистентность касания.
-        
-        Args:
-            max_missed_frames: Сколько кадров держать касание после потери
-        """
+    def set_persistence(self, max_missed_frames: int = 5):
+        """Настраивает персистентность касания."""
         self._max_missed_frames = max_missed_frames

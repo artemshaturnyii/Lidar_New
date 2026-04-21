@@ -150,8 +150,13 @@ class AppController:
             self.on_log(f"💾 Background map saved to '{self.background_filename}'")
 
             self.detector = TouchDetector(self.background_map, ThresholdConfig.sensitive())
-            self.fast_detector = FastTouchDetector(self.background_map, threshold_mm=50.0)
-            self.on_log("🔍 Touch detector initialized")
+            # ✅ ОПТИМИЗИРОВАНО: Более чувствительный детектор для надёжности
+            self.fast_detector = FastTouchDetector(
+                self.background_map, 
+                threshold_mm=30.0,  # БЫЛО: 50.0 → 35.0 (более чувствительный)
+                angle_window=2.0    # БЫЛО: 1.0 → 2.0 (шире группировка)
+            )
+            self.on_log("🔍 Touch detector initialized (sensitive mode)")
 
             self.on_plot_update(self.background_map, None)
             self.check_system_readiness()
@@ -326,8 +331,13 @@ class AppController:
 
             if not self.detector and self.background_map:
                 self.detector = TouchDetector(self.background_map, ThresholdConfig.sensitive())
-                self.fast_detector = FastTouchDetector(self.background_map, threshold_mm=50.0)
-                self.on_log("🔍 Touch detector initialized")
+                # ✅ ОПТИМИЗИРОВАНО: Более чувствительный детектор
+                self.fast_detector = FastTouchDetector(
+                    self.background_map, 
+                    threshold_mm=35.0,
+                    angle_window=2.0
+                )
+                self.on_log("🔍 Touch detector initialized (sensitive mode)")
         except Exception:
             pass
 
@@ -471,9 +481,17 @@ class AppController:
         try:
             last_scan_num = -1
             
-            # ✅ Счётчики для отладки (_detection rate)
+            # ✅ Счётчики для отладки (detection rate)
             touch_detect_count = 0
             touch_miss_count = 0
+            
+            # ✅ Счётчики для анализа причин потерь
+            loss_reasons = {
+                'no_candidate': 0,
+                'persistent_noise': 0,
+                'outside_bounds': 0,
+                'detected': 0
+            }
 
             while self.running:
                 current_scan = self.lidar.get_last_scan()
@@ -501,7 +519,7 @@ class AppController:
                     for p in corrected_scan:
                         p.angle = (p.angle - shift) % 360
 
-                    # ─── Быстрый путь для мыши (LUT, без группировок) ───
+                    # ─── Быстрый путь для мыши ───────────────────────────
                     touch_point = None
                     if self.fast_detector:
                         touch_point = self.fast_detector.detect_single_point(corrected_scan)
@@ -509,18 +527,24 @@ class AppController:
                         # ✅ Статистика для отладки
                         if touch_point:
                             touch_detect_count += 1
+                            loss_reasons['detected'] += 1
                         else:
                             touch_miss_count += 1
+                            # Проверяем почему точка не обнаружена
+                            if self.fast_detector._missed_frames > 0:
+                                loss_reasons['no_candidate'] += 1
 
-                        # Фильтрация постоянного шума (только если есть кандидат)
+                        # Фильтрация постоянного шума
                         if touch_point and self.persistent_noise_manager:
                             if self.persistent_noise_manager.is_persistent_noise(touch_point):
                                 touch_point = None
+                                loss_reasons['persistent_noise'] += 1
 
                         # ПРОВЕРКА: точка внутри углов проекции
                         if touch_point and self.corners:
                             if not self._point_in_polygon_fast(touch_point, self.corners):
                                 touch_point = None
+                                loss_reasons['outside_bounds'] += 1
 
                     # Обновление графика — каждые 33мс
                     now = time.time()
@@ -535,13 +559,28 @@ class AppController:
                         else:
                             self.mouse_controller.update_touch_state(False)
                     
-                    # ✅ Вывод статистики каждые 100 сканов
+                    # ✅ Вывод статистики каждые 200 сканов
                     total = touch_detect_count + touch_miss_count
-                    if total >= 100:
-                        detect_rate = touch_detect_count / total * 100
+                    if total >= 200:
+                        detect_rate = touch_detect_count / total * 100 if total > 0 else 0
                         self.on_log(f"📊 Detection rate: {detect_rate:.1f}% ({touch_detect_count}/{total})")
+                        
+                        # Детальная статистика потерь
+                        total_losses = sum(v for k, v in loss_reasons.items() if k != 'detected')
+                        if total_losses > 0:
+                            self.on_log(f"   Loss breakdown: no_candidate={loss_reasons['no_candidate']}, "
+                                       f"noise={loss_reasons['persistent_noise']}, "
+                                       f"bounds={loss_reasons['outside_bounds']}")
+                        
+                        # Сброс счётчиков
                         touch_detect_count = 0
                         touch_miss_count = 0
+                        loss_reasons = {
+                            'no_candidate': 0,
+                            'persistent_noise': 0,
+                            'outside_bounds': 0,
+                            'detected': 0
+                        }
 
                 # БЕЗ sleep — сразу к следующему скану
 
